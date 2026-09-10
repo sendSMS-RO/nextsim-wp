@@ -6,8 +6,11 @@ on:
   pull_request:
 
 jobs:
-  test:
-    name: PHP ${{ matrix.php }} · lint + unit tests
+  lint:
+    # The plugin itself runs on PHP 8.1+ (see "Requires PHP"), so syntax-check every
+    # shipped file on the oldest supported runtime. No Composer here: the dev tooling
+    # (PHPUnit 11) needs PHP 8.2+.
+    name: PHP ${{ matrix.php }} · syntax check
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -21,15 +24,32 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: php -l
+        run: |
+          find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
+
+  test:
+    name: PHP ${{ matrix.php }} · unit tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ '8.2', '8.4' ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
           tools: composer
           coverage: none
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction
-
-      - name: Syntax check
-        run: |
-          find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
 
       - name: Unit tests
         run: vendor/bin/phpunit
