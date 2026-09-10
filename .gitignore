@@ -4,3 +4,6 @@
 composer.lock
 .DS_Store
 /node_modules/
+
+# Internal API notes stay local (endpoints and payload shapes are not published).
+/docs/
