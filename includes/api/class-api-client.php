@@ -158,7 +158,7 @@ class Api_Client {
 		if ( is_wp_error( $response ) ) {
 			$this->logger->error( 'API network error', array( 'path' => $path, 'error' => $response->get_error_message() ) );
 
-			throw new Api_Exception( $response->get_error_message(), 0 );
+			throw new Api_Exception( esc_html( $response->get_error_message() ), 0 );
 		}
 
 		$status = (int) wp_remote_retrieve_response_code( $response );
@@ -175,7 +175,9 @@ class Api_Client {
 				array( 'path' => $path, 'status' => $status, 'error_code' => $error_code )
 			);
 
-			throw new Api_Exception( $message, $status, $error_code, $parsed );
+			// The decoded body is kept for callers that inspect error fields; it is never output as-is.
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+			throw new Api_Exception( esc_html( $message ), (int) $status, null === $error_code ? null : esc_html( $error_code ), $parsed );
 		}
 
 		return $parsed;

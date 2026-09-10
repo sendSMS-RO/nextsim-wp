@@ -35,6 +35,8 @@ class Settings_Page {
 
 		add_action( 'wp_ajax_nextsim_test_connection', array( $this, 'ajax_test_connection' ) );
 		add_action( 'wp_ajax_nextsim_sync_now', array( $this, 'ajax_sync_now' ) );
+		add_action( 'wp_ajax_nextsim_sync_progress', array( $this, 'ajax_sync_progress' ) );
+		add_action( 'wp_ajax_nextsim_sync_cancel', array( $this, 'ajax_sync_cancel' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 	}
 
@@ -334,10 +336,137 @@ class Settings_Page {
 	}
 
 	private function render_sync_actions(): void {
+		$progress = $this->importer->progress();
+		$running  = 'running' === $progress['status'];
+
 		printf(
-			'<p><button type="button" class="button button-primary" id="nextsim-sync-now">%s</button> <span id="nextsim-sync-result"></span></p>',
-			esc_html__( 'Sync now', 'nextsim-woo' )
+			'<p><button type="button" class="button button-primary" id="nextsim-sync-now"%s>%s</button> <button type="button" class="button" id="nextsim-sync-cancel"%s>%s</button> <span id="nextsim-sync-result"></span></p>',
+			$running ? ' disabled' : '',
+			esc_html__( 'Sync now', 'nextsim-woo' ),
+			$running ? '' : ' style="display:none"',
+			esc_html__( 'Cancel', 'nextsim-woo' )
 		);
+
+		$this->render_progress( $progress );
+	}
+
+	/**
+	 * Server-side render of the progress block, so it shows without JavaScript; the
+	 * script then keeps it fresh while a run is in progress.
+	 *
+	 * @param array<string, mixed> $p
+	 */
+	private function render_progress( array $p ): void {
+		$status  = (string) $p['status'];
+		$percent = is_int( $p['percent'] ) ? $p['percent'] : null;
+		$running = 'running' === $status;
+
+		$classes = array( 'nextsim-progress', 'nextsim-progress--' . $status );
+		if ( ! empty( $p['stalled'] ) ) {
+			$classes[] = 'nextsim-progress--stalled';
+		}
+		if ( 'idle' === $status ) {
+			$classes[] = 'nextsim-progress--empty';
+		}
+
+		printf( '<div id="nextsim-sync-progress" class="%s" data-status="%s">', esc_attr( implode( ' ', $classes ) ), esc_attr( $status ) );
+
+		printf(
+			'<div class="nextsim-progress__bar"%s><span style="width:%d%%"></span></div>',
+			( $running && null === $percent ) ? ' data-indeterminate="1"' : '',
+			(int) ( $percent ?? ( 'done' === $status ? 100 : 0 ) )
+		);
+
+		printf( '<p class="nextsim-progress__summary">%s</p>', esc_html( (string) $p['summary'] ) );
+
+		printf(
+			'<p class="nextsim-progress__meta"><span class="nextsim-progress__counters">%s</span> <span class="nextsim-progress__time">%s</span></p>',
+			esc_html( $this->counters_text( $p ) ),
+			esc_html( $this->time_text( $p ) )
+		);
+
+		if ( ! empty( $p['stalled'] ) ) {
+			printf(
+				'<p class="nextsim-progress__stalled">%s</p>',
+				esc_html__( 'No progress for more than 5 minutes. Background jobs may not be running on this site — check WooCommerce > Status > Scheduled Actions and WP-Cron.', 'nextsim-woo' )
+			);
+		}
+
+		echo '</div>';
+	}
+
+	/**
+	 * @param array<string, mixed> $p
+	 */
+	private function counters_text( array $p ): string {
+		if ( 'idle' === $p['status'] ) {
+			return '';
+		}
+
+		$parts = array(
+			/* translators: %s: number of new products. */
+			sprintf( __( '%s new', 'nextsim-woo' ), number_format_i18n( (int) $p['created'] ) ),
+			/* translators: %s: number of updated products. */
+			sprintf( __( '%s updated', 'nextsim-woo' ), number_format_i18n( (int) $p['updated_items'] ) ),
+			/* translators: %s: number of unchanged products. */
+			sprintf( __( '%s unchanged', 'nextsim-woo' ), number_format_i18n( (int) $p['skipped'] ) ),
+		);
+
+		if ( (int) $p['failed_items'] > 0 ) {
+			/* translators: %s: number of plans that failed to import. */
+			$parts[] = sprintf( __( '%s failed', 'nextsim-woo' ), number_format_i18n( (int) $p['failed_items'] ) );
+		}
+
+		if ( (int) $p['swept'] > 0 ) {
+			/* translators: %s: number of products taken out of stock. */
+			$parts[] = sprintf( __( '%s taken out of stock', 'nextsim-woo' ), number_format_i18n( (int) $p['swept'] ) );
+		}
+
+		return implode( ', ', $parts );
+	}
+
+	/**
+	 * @param array<string, mixed> $p
+	 */
+	private function time_text( array $p ): string {
+		if ( 'running' === $p['status'] ) {
+			/* translators: %s: elapsed time, e.g. "12 min 5 s". */
+			return sprintf( __( 'Running for %s.', 'nextsim-woo' ), self::format_duration( (int) $p['elapsed'] ) );
+		}
+
+		if ( empty( $p['finished'] ) ) {
+			return '';
+		}
+
+		$when = wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), (int) $p['finished'] );
+
+		if ( null === $p['elapsed'] ) {
+			/* translators: %s: date and time. */
+			return sprintf( __( 'Finished %s.', 'nextsim-woo' ), $when );
+		}
+
+		/* translators: 1: date and time, 2: duration. */
+		return sprintf( __( 'Finished %1$s, took %2$s.', 'nextsim-woo' ), $when, self::format_duration( (int) $p['elapsed'] ) );
+	}
+
+	private static function format_duration( int $seconds ): string {
+		$seconds = max( 0, $seconds );
+		$h       = intdiv( $seconds, 3600 );
+		$m       = intdiv( $seconds % 3600, 60 );
+		$s       = $seconds % 60;
+
+		if ( $h > 0 ) {
+			/* translators: 1: hours, 2: minutes. */
+			return sprintf( __( '%1$d h %2$d min', 'nextsim-woo' ), $h, $m );
+		}
+
+		if ( $m > 0 ) {
+			/* translators: 1: minutes, 2: seconds. */
+			return sprintf( __( '%1$d min %2$d s', 'nextsim-woo' ), $m, $s );
+		}
+
+		/* translators: %d: seconds. */
+		return sprintf( __( '%d s', 'nextsim-woo' ), $s );
 	}
 
 	public function enqueue_assets( string $hook ): void {
@@ -346,9 +475,17 @@ class Settings_Page {
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		if ( self::TAB !== ( $_GET['tab'] ?? '' ) ) {
+		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : '';
+		if ( self::TAB !== $tab ) {
 			return;
 		}
+
+		wp_enqueue_style(
+			'nextsim-woo-admin',
+			NEXTSIM_WOO_URL . 'assets/css/admin.css',
+			array(),
+			NEXTSIM_WOO_VERSION
+		);
 
 		wp_enqueue_script(
 			'nextsim-woo-admin',
@@ -362,11 +499,57 @@ class Settings_Page {
 			'nextsim-woo-admin',
 			'nextsimWoo',
 			array(
-				'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
-				'testNonce'    => wp_create_nonce( 'nextsim_test_connection' ),
-				'syncNonce'    => wp_create_nonce( 'nextsim_sync_now' ),
-				'testingText'  => __( 'Testing…', 'nextsim-woo' ),
-				'syncingText'  => __( 'Scheduling…', 'nextsim-woo' ),
+				'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
+				'testNonce'     => wp_create_nonce( 'nextsim_test_connection' ),
+				'syncNonce'     => wp_create_nonce( 'nextsim_sync_now' ),
+				'progressNonce' => wp_create_nonce( 'nextsim_sync_progress' ),
+				'cancelNonce'   => wp_create_nonce( 'nextsim_sync_cancel' ),
+				'testingText'   => __( 'Testing…', 'nextsim-woo' ),
+				'syncingText'   => __( 'Starting…', 'nextsim-woo' ),
+				'progress'      => $this->importer->progress(),
+				'i18n'          => array(
+					'cancelling'    => __( 'Cancelling…', 'nextsim-woo' ),
+					'requestFailed' => __( 'Request failed.', 'nextsim-woo' ),
+					'syncStarted'   => __( 'Sync started.', 'nextsim-woo' ),
+					/* translators: %s: elapsed time, e.g. "12 min 5 s". */
+					'runningFor'    => __( 'Running for %s.', 'nextsim-woo' ),
+					/* translators: %s: number of new products. */
+					'new'           => __( '%s new', 'nextsim-woo' ),
+					/* translators: %s: number of updated products. */
+					'updated'       => __( '%s updated', 'nextsim-woo' ),
+					/* translators: %s: number of unchanged products. */
+					'unchanged'     => __( '%s unchanged', 'nextsim-woo' ),
+					/* translators: %s: number of plans that failed to import. */
+					'failed'        => __( '%s failed', 'nextsim-woo' ),
+					'stalled'       => __( 'No progress for more than 5 minutes. Background jobs may not be running on this site — check WooCommerce > Status > Scheduled Actions and WP-Cron.', 'nextsim-woo' ),
+				),
+			)
+		);
+	}
+
+	public function ajax_sync_progress(): void {
+		check_ajax_referer( 'nextsim_sync_progress', 'nonce' );
+
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'nextsim-woo' ) ), 403 );
+		}
+
+		wp_send_json_success( $this->importer->progress() );
+	}
+
+	public function ajax_sync_cancel(): void {
+		check_ajax_referer( 'nextsim_sync_cancel', 'nonce' );
+
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'nextsim-woo' ) ), 403 );
+		}
+
+		$this->importer->cancel();
+
+		wp_send_json_success(
+			array(
+				'message'  => __( 'Sync cancelled.', 'nextsim-woo' ),
+				'progress' => $this->importer->progress(),
 			)
 		);
 	}
@@ -417,8 +600,15 @@ class Settings_Page {
 			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'nextsim-woo' ) ), 403 );
 		}
 
-		$this->importer->trigger_now();
+		if ( ! $this->importer->trigger_now() ) {
+			wp_send_json_error( array( 'message' => __( 'Enter and save the API host and token first.', 'nextsim-woo' ) ) );
+		}
 
-		wp_send_json_success( array( 'message' => __( 'Import scheduled. It will run in the background.', 'nextsim-woo' ) ) );
+		wp_send_json_success(
+			array(
+				'message'  => __( 'Sync started. It runs in the background; you can leave this page.', 'nextsim-woo' ),
+				'progress' => $this->importer->progress(),
+			)
+		);
 	}
 }

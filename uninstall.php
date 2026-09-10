@@ -28,9 +28,11 @@ $nextsim_woo_options = array(
 	'nextsim_woo_sync_cursor',
 	'nextsim_woo_last_full_sync',
 	'nextsim_woo_last_sync_error',
+	'nextsim_woo_last_sync_result',
 	'nextsim_woo_exchange_mode',
 	'nextsim_woo_exchange_rate',
 	'nextsim_woo_eur_rate_last',
+	'nextsim_woo_attributes_created',
 );
 
 foreach ( $nextsim_woo_options as $nextsim_woo_option ) {

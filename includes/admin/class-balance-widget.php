@@ -12,6 +12,7 @@ namespace NextSIM\Woo\Admin;
 use NextSIM\Woo\Api\Api_Exception;
 use NextSIM\Woo\Api\Api_Client;
 use NextSIM\Woo\Exchange_Rate;
+use NextSIM\Woo\Import\Importer;
 use NextSIM\Woo\Logger;
 use NextSIM\Woo\Settings;
 
@@ -28,7 +29,8 @@ class Balance_Widget {
 		private Settings $settings,
 		private Api_Client $client,
 		private Logger $logger,
-		private ?Exchange_Rate $exchange = null
+		private ?Exchange_Rate $exchange = null,
+		private ?Importer $importer = null
 	) {}
 
 	public function register(): void {
@@ -51,13 +53,31 @@ class Balance_Widget {
 			return;
 		}
 
-		$last_error = (string) get_option( \NextSIM\Woo\Import\Importer::OPT_LAST_ERROR, '' );
+		$last_error = (string) get_option( Importer::OPT_LAST_ERROR, '' );
 		if ( '' !== $last_error ) {
 			printf(
 				'<div class="notice notice-warning"><p><strong>nextSIM:</strong> %s %s</p></div>',
 				esc_html__( 'The last plan sync did not complete successfully:', 'nextsim-woo' ),
 				esc_html( $last_error )
 			);
+		}
+
+		// The Sync section shows the full progress block itself.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$on_nextsim_tab = isset( $_GET['tab'] ) && 'nextsim' === sanitize_key( wp_unslash( $_GET['tab'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		if ( null !== $this->importer && ! $on_nextsim_tab ) {
+			$progress = $this->importer->progress();
+
+			if ( 'running' === $progress['status'] ) {
+				printf(
+					'<div class="notice notice-info"><p><strong>nextSIM:</strong> %s %s <a href="%s">%s</a></p></div>',
+					esc_html__( 'Plan sync in progress:', 'nextsim-woo' ),
+					esc_html( (string) $progress['summary'] ),
+					esc_url( admin_url( 'admin.php?page=wc-settings&tab=nextsim&section=sync' ) ),
+					esc_html__( 'View progress', 'nextsim-woo' )
+				);
+			}
 		}
 
 		if ( $this->settings->is_configured()

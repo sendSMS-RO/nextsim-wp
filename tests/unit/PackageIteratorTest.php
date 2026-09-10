@@ -7,27 +7,8 @@ declare(strict_types=1);
 
 namespace NextSIM\Woo\Tests\Unit;
 
-use NextSIM\Woo\Api\Api_Client;
 use NextSIM\Woo\Api\Package_Iterator;
-use NextSIM\Woo\Logger;
 use PHPUnit\Framework\TestCase;
-
-/**
- * Api_Client double returning canned page payloads keyed by page number.
- */
-final class Fake_Api_Client extends Api_Client {
-
-	/**
-	 * @param array<int, array<string, mixed>> $pages
-	 */
-	public function __construct( private array $pages ) {
-		parent::__construct( 'https://example.test', 'token', new Logger() );
-	}
-
-	public function get_packages_page( array $query ): array {
-		return $this->pages[ (int) ( $query['page'] ?? 1 ) ] ?? array();
-	}
-}
 
 final class PackageIteratorTest extends TestCase {
 

@@ -3,8 +3,10 @@
  * Orchestrates the paginated, throttled plan import via Action Scheduler.
  *
  * A run walks a list of query "segments" (one per import filter combination). Each
- * page is its own scheduled job, spaced apart to stay under the API rate limit. When
- * every segment is exhausted, orphaned products (plans that disappeared) are drafted.
+ * page is its own scheduled job, spaced apart to stay under the API rate limit, and a
+ * job that runs out of its time budget hands the rest of the page to a follow-up job
+ * so a slow host never loses wp-admin to a long-running import. When every segment
+ * is exhausted, orphaned products (plans that disappeared) are taken out of stock.
  *
  * @package NextSIM\Woo
  */
@@ -29,13 +31,22 @@ class Importer {
 	public const GROUP     = 'nextsim-woo';
 
 	/**
-	 * Run state: { run: int, segments: array, imported: int }. A new run overwrites it,
-	 * which makes any still-queued jobs from a previous run abort (run id mismatch) —
-	 * that is the overlap guard. Segments are snapshotted here so mid-run filter edits
-	 * cannot shift or drop segment indexes.
+	 * Run state (see start_run() for the full shape). A new run overwrites it, which
+	 * makes any still-queued jobs from a previous run abort (run id mismatch) — that
+	 * is the overlap guard. Segments are snapshotted here so mid-run filter edits
+	 * cannot shift or drop segment indexes. Every job re-reads it fresh and only
+	 * writes it back when the run id still matches (see persist_state()), so a
+	 * Cancel or a superseding run from another request stops the chain at the end
+	 * of the current chunk.
 	 */
 	private const OPT_RUN_STATE        = 'nextsim_woo_sync_run_state';
 	private const OPT_APPLIED_INTERVAL = 'nextsim_woo_sync_interval_applied';
+
+	/**
+	 * Summary of the last finished run (ok / error / cancelled), the source for the
+	 * progress UI once nothing is running any more.
+	 */
+	public const OPT_LAST_RESULT = 'nextsim_woo_last_sync_result';
 
 	/**
 	 * Incremental sync bookkeeping. OPT_SYNC_CURSOR is the server `generated_at` to send
@@ -58,8 +69,24 @@ class Importer {
 	 */
 	public const OPT_LAST_ERROR = 'nextsim_woo_last_sync_error';
 
-	private const PAGE_SPACING_SECONDS = 2;
-	private const MAX_PAGE_RETRIES     = 5;
+	/**
+	 * Wall-clock budget of one page job, in seconds. A page that takes longer is
+	 * continued by a follow-up job (same page, higher offset). Filterable so a fast
+	 * host can raise it and a very slow one can lower it.
+	 */
+	public const FILTER_TIME_BUDGET   = 'nextsim_woo_import_time_budget';
+	private const DEFAULT_TIME_BUDGET = 10;
+
+	private const PAGE_SPACING_SECONDS  = 2;
+	private const CHUNK_SPACING_SECONDS = 1;
+	private const MAX_PAGE_RETRIES      = 5;
+
+	// A running state not touched for this long is reported as stalled (cron/queue
+	// not running) rather than silently shown as "in progress" forever.
+	private const STALL_AFTER = 5 * MINUTE_IN_SECONDS;
+
+	/** @var callable|null */
+	private $direct_lookup_filter = null;
 
 	public function __construct(
 		private Api_Client $client,
@@ -162,18 +189,23 @@ class Importer {
 
 		$counts = array( 'added' => 0, 'repriced' => 0, 'retired' => 0, 'failed' => 0 );
 
-		foreach ( $added as $item ) {
-			try {
-				$this->mapper->upsert( Plan_Data::from_api( $item ), $run );
-				++$counts['added'];
-			} catch ( \Throwable $e ) {
-				++$counts['failed'];
-				$this->logger->error( 'Incremental: adding a plan failed', array( 'package_id' => (int) ( $item['id'] ?? 0 ), 'error' => $e->getMessage() ) );
+		$this->begin_bulk();
+		try {
+			foreach ( $added as $item ) {
+				try {
+					$this->mapper->upsert( Plan_Data::from_api( $item ), $run );
+					++$counts['added'];
+				} catch ( \Throwable $e ) {
+					++$counts['failed'];
+					$this->logger->error( 'Incremental: adding a plan failed', array( 'package_id' => (int) ( $item['id'] ?? 0 ), 'error' => $e->getMessage() ) );
+				}
 			}
-		}
 
-		$this->apply_price_changes( $priced, $counts );
-		$this->apply_retirements( $retired, $counts );
+			$this->apply_price_changes( $priced, $counts );
+			$this->apply_retirements( $retired, $counts );
+		} finally {
+			$this->end_bulk();
+		}
 
 		// Advance the cursor to the server's own clock so the next window has no gap
 		// and no timezone skew of our making.
@@ -241,9 +273,17 @@ class Importer {
 	/**
 	 * Make sure the recurring sync is scheduled at the configured cadence,
 	 * rescheduling when the admin changes the frequency setting.
+	 *
+	 * Only checked on regular admin page views: the check is an Action Scheduler
+	 * store query, and running it on every front-end, AJAX and cron request (where
+	 * nobody can have changed the setting) is pure overhead.
 	 */
 	public function ensure_scheduled(): void {
 		if ( ! function_exists( 'as_has_scheduled_action' ) ) {
+			return;
+		}
+
+		if ( ! is_admin() || wp_doing_ajax() || wp_doing_cron() ) {
 			return;
 		}
 
@@ -270,13 +310,14 @@ class Importer {
 	}
 
 	/**
-	 * Trigger an import immediately (used by the "Sync now" button).
+	 * Trigger a full import immediately (the "Sync now" button). Starts the run in
+	 * this request — no API call is involved — so the progress UI sees a running
+	 * state right away instead of an "idle" gap until the queue picks up a trigger.
+	 *
+	 * @return bool False when the plugin is not configured.
 	 */
-	public function trigger_now(): void {
-		if ( function_exists( 'as_enqueue_async_action' ) ) {
-			// "Sync now" is a deliberate full refresh, not an incremental delta.
-			as_enqueue_async_action( self::HOOK_SYNC, array( array( 'full' => true ) ), self::GROUP );
-		}
+	public function trigger_now(): bool {
+		return $this->start_run();
 	}
 
 	/**
@@ -284,12 +325,14 @@ class Importer {
 	 *
 	 * Overwriting the run state supersedes any still-running previous run — its queued
 	 * jobs abort on the run-id mismatch, so two runs can never interleave their sweeps.
+	 *
+	 * @return bool False when the plugin is not configured.
 	 */
-	public function start_run(): void {
+	public function start_run(): bool {
 		if ( ! $this->settings->is_configured() ) {
 			$this->logger->warning( 'Import skipped: plugin not configured.' );
 
-			return;
+			return false;
 		}
 
 		$run      = time();
@@ -298,33 +341,64 @@ class Importer {
 		update_option(
 			self::OPT_RUN_STATE,
 			array(
-				'run'      => $run,
-				'segments' => $segments,
-				'imported' => 0,
-				'failed'   => array(),
+				'run'           => $run,
+				'segments'      => $segments,
+				'phase'         => 'importing',
+				'started'       => $run,
+				'updated'       => $run,
+				// Position of the next unit of work.
+				'seg'           => 0,
+				'seg_count'     => count( $segments ),
+				'page'          => 1,
+				'last_page'     => 0,
+				'offset'        => 0,
+				// Per-segment progress (reset when a segment completes).
+				'seg_total'     => 0,
+				'seg_processed' => 0,
+				// Cumulative counters across the run.
+				'processed'     => 0,
+				'imported'      => 0,
+				'created'       => 0,
+				'updated_items' => 0,
+				'skipped'       => 0,
+				'failed_items'  => 0,
+				'failed'        => array(),
 			),
 			false
 		);
 
 		$this->logger->info( 'Import run started', array( 'run' => $run, 'segments' => count( $segments ) ) );
-		$this->enqueue_page( 0, 1, $run, 0 );
+
+		// Due immediately, so the queue runner dispatched at the end of this very
+		// request (e.g. the "Sync now" AJAX call) picks it up.
+		$this->enqueue_page( 0, 1, $run, 0, 0 );
+
+		return true;
 	}
 
 	/**
-	 * Import one page of one segment, then schedule the next unit of work.
+	 * Import (part of) one page of one segment, then schedule the next unit of work.
 	 *
-	 * @param array{seg?: int, page?: int, run?: int, try?: int} $args
+	 * The page is fetched from the API and processed from `offset` on, for at most
+	 * the time budget. Whatever is left is handed to a follow-up job for the same
+	 * page — refetching it is cheap (one request per chunk, chunks are ≥ 1 s apart,
+	 * well inside the 60 req/min limit) and the upsert is idempotent, so a catalog
+	 * that shifts between two chunks can at worst re-apply or postpone one plan.
+	 *
+	 * @param array{seg?: int, page?: int, run?: int, try?: int, offset?: int} $args
 	 */
 	public function run_page( $args = array() ): void {
-		$seg  = (int) ( $args['seg'] ?? 0 );
-		$page = (int) ( $args['page'] ?? 1 );
-		$run  = (int) ( $args['run'] ?? 0 );
-		$try  = (int) ( $args['try'] ?? 0 );
+		$start  = microtime( true );
+		$seg    = (int) ( $args['seg'] ?? 0 );
+		$page   = (int) ( $args['page'] ?? 1 );
+		$run    = (int) ( $args['run'] ?? 0 );
+		$try    = (int) ( $args['try'] ?? 0 );
+		$offset = max( 0, (int) ( $args['offset'] ?? 0 ) );
 
-		$state = get_option( self::OPT_RUN_STATE );
+		$state = $this->fresh_state();
 
 		if ( ! is_array( $state ) || (int) ( $state['run'] ?? 0 ) !== $run ) {
-			$this->logger->info( 'Import page skipped: superseded run', array( 'seg' => $seg, 'page' => $page, 'run' => $run ) );
+			$this->logger->info( 'Import page skipped: superseded or cancelled run', array( 'seg' => $seg, 'page' => $page, 'run' => $run ) );
 
 			return;
 		}
@@ -345,7 +419,7 @@ class Importer {
 			if ( $e->is_retryable() && $try < self::MAX_PAGE_RETRIES ) {
 				$delay = self::PAGE_SPACING_SECONDS * ( 2 ** $try );
 				$this->logger->warning( 'Import page retry', array( 'seg' => $seg, 'page' => $page, 'try' => $try, 'delay' => $delay ) );
-				$this->enqueue_page( $seg, $page, $run, $try + 1, $delay );
+				$this->enqueue_page( $seg, $page, $run, $try + 1, $delay, $offset );
 
 				return;
 			}
@@ -356,34 +430,66 @@ class Importer {
 			$this->logger->error( 'Import segment failed permanently', array( 'seg' => $seg, 'page' => $page, 'error' => $e->getMessage() ) );
 
 			$state['failed'][] = sprintf( 'segment %d (page %d): %s', $seg + 1, $page, $e->getMessage() );
-			update_option( self::OPT_RUN_STATE, $state, false );
-
-			if ( isset( $segments[ $seg + 1 ] ) ) {
-				$this->enqueue_page( $seg + 1, 1, $run, 0 );
-			} else {
-				$this->finish_run( $state );
-			}
+			$this->schedule_next( $state, $seg, $page, $run, count( $segments ), true, 0, 0 );
 
 			return;
 		}
 
+		$items = array_slice( $result['items'], $offset );
+
+		// One query for the whole page instead of one lookup per plan.
+		$map = $this->repository->map_package_ids_to_products(
+			array_map( static fn ( $item ): int => (int) ( $item['id'] ?? 0 ), $items )
+		);
+
+		/**
+		 * Wall-clock budget of one import job, in seconds (see FILTER_TIME_BUDGET).
+		 *
+		 * @param int|float $seconds Default 10.
+		 */
+		$budget = (float) apply_filters( 'nextsim_woo_import_time_budget', self::DEFAULT_TIME_BUDGET );
 		$counts       = array( 'created' => 0, 'updated' => 0, 'skipped' => 0 );
 		$failed_items = 0;
-		foreach ( $result['items'] as $item ) {
-			// A WC/DB error while mapping one plan must not kill the whole page job and
-			// silently stall the catalog — skip that plan, record it, keep going.
-			try {
-				$plan   = Plan_Data::from_api( $item );
-				$status = $this->mapper->upsert( $plan, $run );
-				++$counts[ $status ];
-			} catch ( \Throwable $e ) {
-				++$failed_items;
-				$this->logger->error( 'Import: mapping a plan failed, skipping it', array(
-					'package_id' => (int) ( $item['id'] ?? 0 ),
-					'error'      => $e->getMessage(),
-				) );
+		$processed    = 0;
+
+		$fetched = microtime( true );
+
+		$this->begin_bulk();
+		try {
+			foreach ( $items as $item ) {
+				// Always make progress on at least one plan, otherwise a budget below
+				// one item's cost would reschedule the same offset forever.
+				if ( $processed > 0 && ( microtime( true ) - $start ) >= $budget ) {
+					break;
+				}
+
+				// A WC/DB error while mapping one plan must not kill the whole page job and
+				// silently stall the catalog — skip that plan, record it, keep going.
+				try {
+					$plan     = Plan_Data::from_api( $item );
+					$existing = $this->existing_product( $map[ $plan->id ] ?? 0 );
+					$status   = $this->mapper->upsert_with( $plan, $run, $existing );
+					++$counts[ $status ];
+				} catch ( \Throwable $e ) {
+					++$failed_items;
+					$this->logger->error( 'Import: mapping a plan failed, skipping it', array(
+						'package_id' => (int) ( $item['id'] ?? 0 ),
+						'error'      => $e->getMessage(),
+					) );
+				}
+
+				++$processed;
 			}
+		} finally {
+			$looped = microtime( true );
+			$this->end_bulk();
 		}
+
+		$timing = array(
+			'fetch_s' => round( $fetched - $start, 2 ),
+			'items_s' => round( $looped - $fetched, 2 ),
+			'flush_s' => round( microtime( true ) - $looped, 2 ),
+		);
 
 		// Any per-item failure suppresses this run's orphan sweep (via finish_run) and
 		// surfaces to the admin, matching how a segment-level failure is handled.
@@ -391,18 +497,207 @@ class Importer {
 			$state['failed'][] = sprintf( 'segment %d (page %d): %d plan(s) failed to import', $seg + 1, $page, $failed_items );
 		}
 
-		$state['imported'] = (int) ( $state['imported'] ?? 0 ) + count( $result['items'] );
+		$state['last_page']      = (int) $result['last_page'];
+		$state['seg_total']      = (int) $result['total'];
+		$state['seg_processed']  = (int) ( $state['seg_processed'] ?? 0 ) + $processed;
+		$state['processed']      = (int) ( $state['processed'] ?? 0 ) + $processed;
+		$state['imported']       = $state['processed'];
+		$state['created']        = (int) ( $state['created'] ?? 0 ) + $counts['created'];
+		$state['updated_items']  = (int) ( $state['updated_items'] ?? 0 ) + $counts['updated'];
+		$state['skipped']        = (int) ( $state['skipped'] ?? 0 ) + $counts['skipped'];
+		$state['failed_items']   = (int) ( $state['failed_items'] ?? 0 ) + $failed_items;
+
+		$done_on_page = $offset + $processed;
+		$page_done    = $done_on_page >= count( $result['items'] );
+
+		$this->logger->info(
+			$page_done ? 'Import page done' : 'Import page chunk done',
+			array( 'seg' => $seg, 'page' => $page, 'of' => $result['last_page'], 'offset' => $offset, 'processed' => $processed ) + $counts + $timing
+		);
+
+		$this->schedule_next(
+			$state,
+			$seg,
+			$page,
+			$run,
+			count( $segments ),
+			$page_done && (int) $result['current_page'] >= (int) $result['last_page'],
+			$page_done ? 0 : $done_on_page,
+			$page_done ? $page + 1 : $page
+		);
+	}
+
+	/**
+	 * Move the run-state position to the next unit of work, persist it, and queue
+	 * the job for it — or finish the run when nothing is left. Nothing is queued when
+	 * the state could not be persisted (the run was cancelled or superseded).
+	 *
+	 * @param array<string, mixed> $state
+	 * @param bool                 $segment_done True when the current segment has no more pages.
+	 * @param int                  $next_offset  Offset to continue the current page at (0 = page complete).
+	 * @param int                  $next_page    Page to continue at when the segment is not done.
+	 */
+	private function schedule_next( array $state, int $seg, int $page, int $run, int $seg_count, bool $segment_done, int $next_offset, int $next_page ): void {
+		$state['seg']     = $seg;
+		$state['page']    = $page;
+		$state['updated'] = time();
+
+		if ( $segment_done ) {
+			$finished = ! ( $seg + 1 < $seg_count );
+
+			if ( ! $finished ) {
+				$state['seg']           = $seg + 1;
+				$state['page']          = 1;
+				$state['offset']        = 0;
+				$state['last_page']     = 0;
+				$state['seg_total']     = 0;
+				$state['seg_processed'] = 0;
+			}
+
+			if ( ! $this->persist_state( $state ) ) {
+				$this->logger->info( 'Import stopped: run cancelled or superseded', array( 'run' => $run ) );
+
+				return;
+			}
+
+			if ( $finished ) {
+				$this->finish_run( $state );
+			} else {
+				$this->enqueue_page( $seg + 1, 1, $run, 0 );
+			}
+
+			return;
+		}
+
+		$continuing_page = $next_offset > 0;
+
+		$state['page']   = $continuing_page ? $page : $next_page;
+		$state['offset'] = $next_offset;
+
+		if ( ! $this->persist_state( $state ) ) {
+			$this->logger->info( 'Import stopped: run cancelled or superseded', array( 'run' => $run ) );
+
+			return;
+		}
+
+		if ( $continuing_page ) {
+			$this->enqueue_page( $seg, $page, $run, 0, self::CHUNK_SPACING_SECONDS, $next_offset );
+		} else {
+			$this->enqueue_page( $seg, $next_page, $run, 0 );
+		}
+	}
+
+	/**
+	 * Resolve a product id from the page lookup map. Mirrors find_by_package_id():
+	 * a trashed product is not "ours" any more and gets a fresh import.
+	 */
+	private function existing_product( int $product_id ): ?\WC_Product {
+		if ( $product_id <= 0 ) {
+			return null;
+		}
+
+		$product = wc_get_product( $product_id );
+
+		if ( ! $product instanceof \WC_Product || 'trash' === $product->get_status() ) {
+			return null;
+		}
+
+		return $product;
+	}
+
+	/**
+	 * Cheaper product writes for the duration of a bulk loop:
+	 *
+	 * - term counts are recomputed once at the end instead of on every save (five
+	 *   taxonomies per product, including WooCommerce's product_cat recount);
+	 * - WooCommerce's attribute-lookup table is updated inline instead of scheduling
+	 *   one Action Scheduler job per saved product (thousands of jobs per full sync
+	 *   otherwise, competing with the import in the same queue);
+	 * - product transient deletions are batched (WooCommerce ≥ 9.9), guarded because
+	 *   the deferrer lives in WooCommerce's internal namespace.
+	 */
+	private function begin_bulk(): void {
+		if ( function_exists( 'wp_defer_term_counting' ) ) {
+			wp_defer_term_counting( true );
+		}
+
+		if ( null === $this->direct_lookup_filter ) {
+			$this->direct_lookup_filter = static fn (): string => 'yes';
+			add_filter( 'pre_option_woocommerce_attribute_lookup_direct_updates', $this->direct_lookup_filter );
+		}
+
+		$deferrer = $this->transients_deferrer();
+		if ( null !== $deferrer ) {
+			$deferrer->start_deferring();
+		}
+	}
+
+	private function end_bulk(): void {
+		$deferrer = $this->transients_deferrer();
+		if ( null !== $deferrer ) {
+			$deferrer->stop_deferring();
+		}
+
+		if ( null !== $this->direct_lookup_filter ) {
+			remove_filter( 'pre_option_woocommerce_attribute_lookup_direct_updates', $this->direct_lookup_filter );
+			$this->direct_lookup_filter = null;
+		}
+
+		if ( function_exists( 'wp_defer_term_counting' ) ) {
+			wp_defer_term_counting( false );
+		}
+	}
+
+	private function transients_deferrer(): ?object {
+		if ( ! function_exists( 'wc_get_container' ) ) {
+			return null;
+		}
+
+		$class = 'Automattic\\WooCommerce\\Internal\\Caches\\ProductTransientsDeferrer';
+		if ( ! class_exists( $class ) ) {
+			return null;
+		}
+
+		try {
+			$deferrer = wc_get_container()->get( $class );
+		} catch ( \Throwable $e ) {
+			return null;
+		}
+
+		return ( is_object( $deferrer ) && method_exists( $deferrer, 'start_deferring' ) && method_exists( $deferrer, 'stop_deferring' ) )
+			? $deferrer
+			: null;
+	}
+
+	/**
+	 * The run state as currently stored, bypassing this request's option cache so a
+	 * Cancel or a new run started from another request is seen.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	private function fresh_state(): ?array {
+		wp_cache_delete( self::OPT_RUN_STATE, 'options' );
+
+		$state = get_option( self::OPT_RUN_STATE );
+
+		return is_array( $state ) ? $state : null;
+	}
+
+	/**
+	 * Write the run state back only while it still belongs to the same run.
+	 *
+	 * @param array<string, mixed> $state
+	 */
+	private function persist_state( array $state ): bool {
+		$current = $this->fresh_state();
+
+		if ( null === $current || (int) ( $current['run'] ?? 0 ) !== (int) ( $state['run'] ?? 0 ) ) {
+			return false;
+		}
+
 		update_option( self::OPT_RUN_STATE, $state, false );
 
-		$this->logger->info( 'Import page done', array( 'seg' => $seg, 'page' => $page, 'of' => $result['last_page'] ) + $counts );
-
-		if ( $result['current_page'] < $result['last_page'] ) {
-			$this->enqueue_page( $seg, $page + 1, $run, 0 );
-		} elseif ( isset( $segments[ $seg + 1 ] ) ) {
-			$this->enqueue_page( $seg + 1, 1, $run, 0 );
-		} else {
-			$this->finish_run( $state );
-		}
+		return true;
 	}
 
 	/**
@@ -448,75 +743,333 @@ class Importer {
 	}
 
 	/**
-	 * @param array<string, scalar> $extra
+	 * Queue one page job. A delay of 0 queues it as an async action (due now).
 	 */
-	private function enqueue_page( int $seg, int $page, int $run, int $try, int $delay = self::PAGE_SPACING_SECONDS ): void {
+	private function enqueue_page( int $seg, int $page, int $run, int $try, int $delay = self::PAGE_SPACING_SECONDS, int $offset = 0 ): void {
+		$args = array(
+			array(
+				'seg'    => $seg,
+				'page'   => $page,
+				'run'    => $run,
+				'try'    => $try,
+				'offset' => $offset,
+			),
+		);
+
+		if ( $delay <= 0 && function_exists( 'as_enqueue_async_action' ) ) {
+			as_enqueue_async_action( self::HOOK_PAGE, $args, self::GROUP );
+
+			return;
+		}
+
 		if ( ! function_exists( 'as_schedule_single_action' ) ) {
 			return;
 		}
 
-		as_schedule_single_action(
-			time() + max( 1, $delay ),
-			self::HOOK_PAGE,
-			array(
-				array(
-					'seg'  => $seg,
-					'page' => $page,
-					'run'  => $run,
-					'try'  => $try,
-				),
-			),
-			self::GROUP
+		as_schedule_single_action( time() + max( 1, $delay ), self::HOOK_PAGE, $args, self::GROUP );
+	}
+
+	/**
+	 * Finish a run: sweep orphans and record the outcome — but never sweep after a
+	 * run with failed segments (their products were not touched and would be wrongly
+	 * swept) or a run that imported nothing (an API/parsing problem would otherwise
+	 * take the entire catalog out of stock). The run state stays in place (phase
+	 * "sweeping") until the summary is written, so the progress UI never reports
+	 * "idle" while the sweep is still running.
+	 *
+	 * @param array<string, mixed> $state
+	 */
+	private function finish_run( array $state ): void {
+		$run       = (int) ( $state['run'] ?? 0 );
+		$processed = (int) ( $state['processed'] ?? $state['imported'] ?? 0 );
+		$failed    = is_array( $state['failed'] ?? null ) ? $state['failed'] : array();
+
+		$state['phase']   = 'sweeping';
+		$state['updated'] = time();
+
+		if ( ! $this->persist_state( $state ) ) {
+			$this->logger->info( 'Import finish skipped: run cancelled or superseded', array( 'run' => $run ) );
+
+			return;
+		}
+
+		$result = $this->result_from_state( $state, 'ok', '' );
+
+		try {
+			if ( array() !== $failed ) {
+				$result['status']  = 'error';
+				$result['message'] = implode( ' | ', $failed );
+				update_option( self::OPT_LAST_ERROR, $result['message'], false );
+				$this->logger->error( 'Import run finished with failed segments — orphan sweep skipped.', array( 'run' => $run, 'failed' => $failed ) );
+			} elseif ( $processed <= 0 ) {
+				$result['status']  = 'error';
+				$result['message'] = __( 'The last sync imported zero plans — check the API connection and the import filters.', 'nextsim-woo' );
+				update_option( self::OPT_LAST_ERROR, $result['message'], false );
+				$this->logger->error( 'Import run finished with zero plans — orphan sweep skipped as a safety measure.', array( 'run' => $run ) );
+			} else {
+				delete_option( self::OPT_LAST_ERROR );
+				$result['swept'] = $this->sweep_orphans( $run );
+				update_option( self::OPT_LAST_FULL_SYNC, $run, false );
+
+				// Baseline the incremental cursor only when there is no fresh one — on bootstrap
+				// or after it aged out. A running incremental keeps the cursor at the server's
+				// own clock (its `generated_at`), so the weekly reconciliation walk must not
+				// reset it back to a minted value and force a redundant re-apply window. The
+				// one-hour margin here absorbs clock skew between this server and the API;
+				// re-applying a change is idempotent, so overlap is harmless while a gap could
+				// miss a retirement.
+				$cursor    = (string) get_option( self::OPT_SYNC_CURSOR, '' );
+				$cursor_ts = '' !== $cursor ? strtotime( $cursor ) : false;
+				if ( '' === $cursor || false === $cursor_ts || ( time() - $cursor_ts ) > self::FULL_SYNC_MAX_AGE ) {
+					update_option( self::OPT_SYNC_CURSOR, gmdate( 'c', $run - HOUR_IN_SECONDS ), false );
+				}
+
+				$this->logger->info( 'Import run finished', array( 'run' => $run, 'imported' => $processed, 'swept' => $result['swept'] ) );
+			}
+		} catch ( \Throwable $e ) {
+			$result['status']  = 'error';
+			$result['message'] = $e->getMessage();
+			update_option( self::OPT_LAST_ERROR, $result['message'], false );
+			$this->logger->error( 'Import run failed while finishing', array( 'run' => $run, 'error' => $e->getMessage() ) );
+		} finally {
+			$result['finished'] = time();
+			update_option( self::OPT_LAST_RESULT, $result, false );
+			delete_option( self::OPT_RUN_STATE );
+		}
+	}
+
+	/**
+	 * Abort the running import: drop its queued jobs and its state. The chunk that
+	 * may be executing right now stops on its own at the end (persist_state fails).
+	 */
+	public function cancel(): void {
+		$state = $this->fresh_state();
+
+		if ( function_exists( 'as_unschedule_all_actions' ) ) {
+			as_unschedule_all_actions( self::HOOK_PAGE );
+			// A queued "Sync now" trigger, but not the recurring sync (args are matched).
+			as_unschedule_all_actions( self::HOOK_SYNC, array( array( 'full' => true ) ), self::GROUP );
+		}
+
+		if ( null === $state ) {
+			return;
+		}
+
+		$result             = $this->result_from_state( $state, 'cancelled', __( 'Cancelled by an administrator.', 'nextsim-woo' ) );
+		$result['finished'] = time();
+
+		update_option( self::OPT_LAST_RESULT, $result, false );
+		delete_option( self::OPT_RUN_STATE );
+
+		$this->logger->info( 'Import run cancelled', array( 'run' => (int) ( $state['run'] ?? 0 ), 'processed' => $result['processed'] ) );
+	}
+
+	/**
+	 * @param array<string, mixed> $state
+	 * @return array<string, mixed>
+	 */
+	private function result_from_state( array $state, string $status, string $message ): array {
+		return array(
+			'run'           => (int) ( $state['run'] ?? 0 ),
+			'started'       => (int) ( $state['started'] ?? $state['run'] ?? 0 ),
+			'finished'      => 0,
+			'status'        => $status,
+			'message'       => $message,
+			'processed'     => (int) ( $state['processed'] ?? $state['imported'] ?? 0 ),
+			'created'       => (int) ( $state['created'] ?? 0 ),
+			'updated_items' => (int) ( $state['updated_items'] ?? 0 ),
+			'skipped'       => (int) ( $state['skipped'] ?? 0 ),
+			'failed_items'  => (int) ( $state['failed_items'] ?? 0 ),
+			'swept'         => 0,
 		);
 	}
 
 	/**
-	 * Finish a run: release the run state and sweep orphans — but never sweep after a
-	 * run with failed segments (their products were not touched and would be wrongly
-	 * swept) or a run that imported nothing (an API/parsing problem would otherwise
-	 * take the entire catalog out of stock).
+	 * Snapshot of the import for the admin UI: the running state if there is one,
+	 * otherwise the last finished run, otherwise idle.
 	 *
-	 * @param array{run?: int, imported?: int, failed?: array<int, string>} $state
+	 * @return array<string, mixed>
 	 */
-	private function finish_run( array $state ): void {
-		$run      = (int) ( $state['run'] ?? 0 );
-		$imported = (int) ( $state['imported'] ?? 0 );
-		$failed   = is_array( $state['failed'] ?? null ) ? $state['failed'] : array();
+	public function progress(): array {
+		$state = $this->fresh_state();
 
-		delete_option( self::OPT_RUN_STATE );
-
-		if ( array() !== $failed ) {
-			update_option( self::OPT_LAST_ERROR, implode( ' | ', $failed ), false );
-			$this->logger->error( 'Import run finished with failed segments — orphan sweep skipped.', array( 'run' => $run, 'failed' => $failed ) );
-
-			return;
+		if ( null !== $state ) {
+			return $this->progress_from_state( $state );
 		}
 
-		if ( $imported <= 0 ) {
-			update_option( self::OPT_LAST_ERROR, __( 'The last sync imported zero plans — check the API connection and the import filters.', 'nextsim-woo' ), false );
-			$this->logger->error( 'Import run finished with zero plans — orphan sweep skipped as a safety measure.', array( 'run' => $run ) );
+		$last = get_option( self::OPT_LAST_RESULT );
 
-			return;
+		if ( is_array( $last ) ) {
+			return $this->progress_from_result( $last );
 		}
 
-		delete_option( self::OPT_LAST_ERROR );
-		$this->sweep_orphans( $run );
-		update_option( self::OPT_LAST_FULL_SYNC, $run, false );
+		return $this->progress_shape(
+			array(
+				'status'  => 'idle',
+				'summary' => __( 'No sync has run yet.', 'nextsim-woo' ),
+			)
+		);
+	}
 
-		// Baseline the incremental cursor only when there is no fresh one — on bootstrap
-		// or after it aged out. A running incremental keeps the cursor at the server's
-		// own clock (its `generated_at`), so the weekly reconciliation walk must not
-		// reset it back to a minted value and force a redundant re-apply window. The
-		// one-hour margin here absorbs clock skew between this server and the API;
-		// re-applying a change is idempotent, so overlap is harmless while a gap could
-		// miss a retirement.
-		$cursor    = (string) get_option( self::OPT_SYNC_CURSOR, '' );
-		$cursor_ts = '' !== $cursor ? strtotime( $cursor ) : false;
-		if ( '' === $cursor || false === $cursor_ts || ( time() - $cursor_ts ) > self::FULL_SYNC_MAX_AGE ) {
-			update_option( self::OPT_SYNC_CURSOR, gmdate( 'c', $run - HOUR_IN_SECONDS ), false );
+	/**
+	 * @param array<string, mixed> $state
+	 * @return array<string, mixed>
+	 */
+	private function progress_from_state( array $state ): array {
+		$now           = time();
+		$phase         = (string) ( $state['phase'] ?? 'importing' );
+		$seg           = (int) ( $state['seg'] ?? 0 );
+		$seg_count     = max( 1, (int) ( $state['seg_count'] ?? 1 ) );
+		$page          = (int) ( $state['page'] ?? 1 );
+		$last_page     = (int) ( $state['last_page'] ?? 0 );
+		$offset        = (int) ( $state['offset'] ?? 0 );
+		$seg_total     = (int) ( $state['seg_total'] ?? 0 );
+		$seg_processed = (int) ( $state['seg_processed'] ?? 0 );
+		$processed     = (int) ( $state['processed'] ?? $state['imported'] ?? 0 );
+		$updated       = (int) ( $state['updated'] ?? $state['run'] ?? $now );
+
+		if ( 'sweeping' === $phase ) {
+			$percent = 100;
+		} elseif ( $seg_total > 0 ) {
+			$percent = (int) floor( ( $seg + min( 1.0, $seg_processed / $seg_total ) ) / $seg_count * 100 );
+		} elseif ( $last_page > 0 ) {
+			$percent = (int) floor( ( $seg + ( ( $page - 1 ) + $offset / 100 ) / $last_page ) / $seg_count * 100 );
+		} else {
+			$percent = null;
 		}
 
-		$this->logger->info( 'Import run finished', array( 'run' => $run, 'imported' => $imported ) );
+		if ( null !== $percent ) {
+			$percent = max( 0, min( 100, $percent ) );
+		}
+
+		if ( 'sweeping' === $phase ) {
+			$summary = __( 'Finishing: checking for plans that disappeared from the API…', 'nextsim-woo' );
+		} else {
+			$parts = array();
+
+			if ( $seg_count > 1 ) {
+				/* translators: 1: current segment number, 2: number of segments. */
+				$parts[] = sprintf( __( 'Segment %1$d/%2$d', 'nextsim-woo' ), $seg + 1, $seg_count );
+			}
+
+			if ( $last_page > 0 ) {
+				/* translators: 1: current page, 2: number of pages. */
+				$parts[] = sprintf( __( 'Page %1$d/%2$d', 'nextsim-woo' ), min( $page, $last_page ), $last_page );
+			}
+
+			if ( $seg_total > 0 ) {
+				/* translators: 1: plans processed, 2: total plans. */
+				$parts[] = sprintf( __( '%1$s / %2$s plans', 'nextsim-woo' ), number_format_i18n( $seg_processed ), number_format_i18n( $seg_total ) );
+			} elseif ( $processed > 0 ) {
+				/* translators: %s: plans processed. */
+				$parts[] = sprintf( __( '%s plans', 'nextsim-woo' ), number_format_i18n( $processed ) );
+			}
+
+			if ( null !== $percent ) {
+				$parts[] = $percent . '%';
+			}
+
+			$summary = array() === $parts ? __( 'Starting…', 'nextsim-woo' ) : implode( ' · ', $parts );
+		}
+
+		return $this->progress_shape(
+			array(
+				'status'        => 'running',
+				'phase'         => $phase,
+				'percent'       => $percent,
+				'seg'           => $seg,
+				'seg_count'     => $seg_count,
+				'page'          => $page,
+				'last_page'     => $last_page,
+				'total'         => $seg_total,
+				'processed'     => $processed,
+				'seg_processed' => $seg_processed,
+				'created'       => (int) ( $state['created'] ?? 0 ),
+				'updated_items' => (int) ( $state['updated_items'] ?? 0 ),
+				'skipped'       => (int) ( $state['skipped'] ?? 0 ),
+				'failed_items'  => (int) ( $state['failed_items'] ?? 0 ),
+				'started'       => (int) ( $state['started'] ?? $state['run'] ?? 0 ),
+				'updated'       => $updated,
+				'elapsed'       => max( 0, $now - (int) ( $state['started'] ?? $state['run'] ?? $now ) ),
+				'stalled'       => ( $now - $updated ) > self::STALL_AFTER,
+				'summary'       => $summary,
+			)
+		);
+	}
+
+	/**
+	 * @param array<string, mixed> $last
+	 * @return array<string, mixed>
+	 */
+	private function progress_from_result( array $last ): array {
+		$status    = (string) ( $last['status'] ?? 'ok' );
+		$processed = (int) ( $last['processed'] ?? 0 );
+		$message   = (string) ( $last['message'] ?? '' );
+
+		if ( 'ok' === $status ) {
+			/* translators: 1: plans processed, 2: created, 3: updated, 4: unchanged. */
+			$summary = sprintf( __( 'Last sync completed: %1$s plans (%2$s new, %3$s updated, %4$s unchanged).', 'nextsim-woo' ), number_format_i18n( $processed ), number_format_i18n( (int) ( $last['created'] ?? 0 ) ), number_format_i18n( (int) ( $last['updated_items'] ?? 0 ) ), number_format_i18n( (int) ( $last['skipped'] ?? 0 ) ) );
+			$ui      = 'done';
+		} elseif ( 'cancelled' === $status ) {
+			/* translators: %s: plans processed before the cancel. */
+			$summary = sprintf( __( 'Last sync was cancelled after %s plans.', 'nextsim-woo' ), number_format_i18n( $processed ) );
+			$ui      = 'cancelled';
+		} else {
+			$summary = __( 'Last sync did not complete successfully.', 'nextsim-woo' ) . ( '' !== $message ? ' ' . $message : '' );
+			$ui      = 'error';
+		}
+
+		$started  = (int) ( $last['started'] ?? 0 );
+		$finished = (int) ( $last['finished'] ?? 0 );
+
+		return $this->progress_shape(
+			array(
+				'status'        => $ui,
+				'percent'       => 'ok' === $status ? 100 : null,
+				'processed'     => $processed,
+				'created'       => (int) ( $last['created'] ?? 0 ),
+				'updated_items' => (int) ( $last['updated_items'] ?? 0 ),
+				'skipped'       => (int) ( $last['skipped'] ?? 0 ),
+				'failed_items'  => (int) ( $last['failed_items'] ?? 0 ),
+				'swept'         => (int) ( $last['swept'] ?? 0 ),
+				'started'       => $started,
+				'finished'      => $finished,
+				'elapsed'       => ( $started > 0 && $finished >= $started ) ? $finished - $started : null,
+				'message'       => $message,
+				'summary'       => $summary,
+			)
+		);
+	}
+
+	/**
+	 * @param array<string, mixed> $values
+	 * @return array<string, mixed>
+	 */
+	private function progress_shape( array $values ): array {
+		return $values + array(
+			'status'        => 'idle',
+			'phase'         => null,
+			'percent'       => null,
+			'seg'           => 0,
+			'seg_count'     => 0,
+			'page'          => 0,
+			'last_page'     => 0,
+			'total'         => 0,
+			'processed'     => 0,
+			'seg_processed' => 0,
+			'created'       => 0,
+			'updated_items' => 0,
+			'skipped'       => 0,
+			'failed_items'  => 0,
+			'swept'         => 0,
+			'started'       => null,
+			'updated'       => null,
+			'finished'      => null,
+			'elapsed'       => null,
+			'stalled'       => false,
+			'message'       => '',
+			'summary'       => '',
+		);
 	}
 
 	/**
@@ -524,18 +1077,28 @@ class Importer {
 	 * they stay in the catalog but can no longer be purchased, and are restored
 	 * automatically when the plan reappears. Only products that carry a nextSIM
 	 * package id are ever touched.
+	 *
+	 * @return int Number of products taken out of stock.
 	 */
-	private function sweep_orphans( int $run ): void {
+	private function sweep_orphans( int $run ): int {
 		$swept = 0;
-		foreach ( $this->repository->find_orphans_synced_before( $run ) as $product_id ) {
-			if ( $this->mark_out_of_stock( (int) $product_id ) ) {
-				++$swept;
+
+		$this->begin_bulk();
+		try {
+			foreach ( $this->repository->find_orphans_synced_before( $run ) as $product_id ) {
+				if ( $this->mark_out_of_stock( (int) $product_id ) ) {
+					++$swept;
+				}
 			}
+		} finally {
+			$this->end_bulk();
 		}
 
 		if ( $swept > 0 ) {
 			$this->logger->info( 'Orphan sweep marked products out of stock', array( 'count' => $swept ) );
 		}
+
+		return $swept;
 	}
 
 	/**

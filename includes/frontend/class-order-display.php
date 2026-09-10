@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace NextSIM\Woo\Frontend;
 
 use NextSIM\Woo\Data\Order_Esim_Store;
+use NextSIM\Woo\Frontend\Install_Guide;
 use NextSIM\Woo\Fulfilment\Qr_Renderer;
 
 defined( 'ABSPATH' ) || exit;
@@ -93,6 +94,8 @@ class Order_Display {
 
 			$out .= '</div>';
 		}
+
+		$out .= Install_Guide::html();
 
 		return $out . '</div>';
 	}

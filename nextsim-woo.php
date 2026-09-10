@@ -4,7 +4,7 @@
  * Plugin URI:        https://nextsim.eu
  * Description:       Sell nextSIM eSIM plans on your WooCommerce store: import plans, automatic QR delivery, top-up and consumption checks.
  * Version:           0.1.0
- * Requires at least: 6.4
+ * Requires at least: 6.5
  * Requires PHP:      8.1
  * Requires Plugins:  woocommerce
  * Author:            nextSIM
@@ -14,7 +14,7 @@
  * Text Domain:       nextsim-woo
  * Domain Path:       /languages
  * WC requires at least: 8.0
- * WC tested up to:   10.9
+ * WC tested up to:   11.1
  *
  * @package NextSIM\Woo
  */

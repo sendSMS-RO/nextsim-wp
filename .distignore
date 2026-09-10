@@ -1,0 +1,13 @@
+# Files excluded from the distributed plugin ZIP (wp dist-archive / WP.org build).
+.git
+.github
+.gitignore
+.distignore
+.phpunit.cache
+.DS_Store
+composer.json
+composer.lock
+phpunit.xml.dist
+tests
+docs
+node_modules

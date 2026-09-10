@@ -8,6 +8,10 @@
  * @package NextSIM\Woo
  */
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- WooCommerce email template: the
+// footer hook and the injected variables ($order, $email_heading) are WooCommerce's template
+// contract; the rest are locals of this include, not real globals.
+
 use NextSIM\Woo\Data\Order_Esim_Store;
 
 defined( 'ABSPATH' ) || exit;

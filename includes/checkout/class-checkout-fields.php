@@ -47,8 +47,10 @@ class Checkout_Fields {
 		}
 
 		if ( '1' === (string) $product->get_meta( Product_Meta::CAN_TOP_UP ) ) {
-			$prefill = $_POST['nextsim_topup_code'] ?? ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			$prefill = is_string( $prefill ) ? wp_unslash( $prefill ) : '';
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing
+			$prefill = isset( $_POST['nextsim_topup_code'] ) && is_string( $_POST['nextsim_topup_code'] )
+				? sanitize_text_field( wp_unslash( $_POST['nextsim_topup_code'] ) ) // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				: '';
 
 			printf(
 				'<p class="form-row nextsim-topup-field"><label for="nextsim_topup_code">%s</label>
@@ -67,7 +69,7 @@ class Checkout_Fields {
 				. esc_html__( 'Number of eSIMs (shared data)', 'nextsim-woo' ) . '</label>';
 			echo '<select id="nextsim_esim_quantity" name="nextsim_esim_quantity">';
 			for ( $i = 1; $i <= $max; $i++ ) {
-				printf( '<option value="%1$d">%1$d</option>', $i );
+				printf( '<option value="%1$d">%1$d</option>', (int) $i );
 			}
 			echo '</select></p>';
 		}
@@ -87,7 +89,7 @@ class Checkout_Fields {
 
 		// phpcs:disable WordPress.Security.NonceVerification.Missing
 		$code = sanitize_text_field( wp_unslash( $_POST['nextsim_topup_code'] ?? '' ) );
-		$qty  = (int) ( $_POST['nextsim_esim_quantity'] ?? 1 );
+		$qty  = isset( $_POST['nextsim_esim_quantity'] ) ? intval( wp_unslash( $_POST['nextsim_esim_quantity'] ) ) : 1;
 		// phpcs:enable
 
 		if ( '' !== $code && '1' !== (string) $product->get_meta( Product_Meta::CAN_TOP_UP ) ) {
@@ -183,7 +185,7 @@ class Checkout_Fields {
 
 		// phpcs:disable WordPress.Security.NonceVerification.Missing
 		$code = sanitize_text_field( wp_unslash( $_POST['nextsim_topup_code'] ?? '' ) );
-		$qty  = max( 1, (int) ( $_POST['nextsim_esim_quantity'] ?? 1 ) );
+		$qty  = isset( $_POST['nextsim_esim_quantity'] ) ? max( 1, intval( wp_unslash( $_POST['nextsim_esim_quantity'] ) ) ) : 1;
 		// phpcs:enable
 
 		if ( '' !== $code ) {

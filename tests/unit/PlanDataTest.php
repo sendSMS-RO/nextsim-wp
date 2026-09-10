@@ -78,6 +78,37 @@ final class PlanDataTest extends TestCase {
 		$this->assertSame( '', $plan->data_cap_per );
 	}
 
+	public function test_countries_are_unique_and_uppercased(): void {
+		$raw              = $this->sample();
+		$raw['operators'] = array(
+			array( 'country' => 'tr', 'operator_name' => 'Turkcell' ),
+			array( 'country' => 'TR', 'operator_name' => 'Vodafone TR' ),
+			array( 'country' => 'GR', 'operator_name' => 'Cosmote' ),
+			array( 'country' => '', 'operator_name' => 'Unknown' ),
+		);
+
+		$plan = Plan_Data::from_api( $raw );
+
+		$this->assertSame( array( 'TR', 'GR' ), $plan->countries() );
+	}
+
+	public function test_countries_empty_when_no_operators(): void {
+		$raw              = $this->sample();
+		$raw['operators'] = array();
+
+		$this->assertSame( array(), Plan_Data::from_api( $raw )->countries() );
+	}
+
+	public function test_coverage_change_alters_attributes_hash(): void {
+		$a = Plan_Data::from_api( $this->sample() );
+
+		$raw              = $this->sample();
+		$raw['operators'] = array( array( 'country' => 'ES', 'operator_name' => 'Movistar' ) );
+		$b                = Plan_Data::from_api( $raw );
+
+		$this->assertNotSame( $a->attributes_hash(), $b->attributes_hash() );
+	}
+
 	public function test_attributes_hash_changes_when_plan_becomes_unlimited(): void {
 		$a = Plan_Data::from_api( $this->sample() );
 

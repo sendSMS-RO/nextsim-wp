@@ -34,4 +34,6 @@ final class Product_Meta {
 	public const ROUTE             = '_nextsim_route';
 	public const PROVIDER          = '_nextsim_provider';
 	public const LOCATION_ZONE     = '_nextsim_location_zone';
+	// JSON list of upstream country codes the plan covers (from its operators).
+	public const COVERAGE          = '_nextsim_coverage';
 }

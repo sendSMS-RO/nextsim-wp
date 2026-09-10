@@ -1,0 +1,72 @@
+/* nextSIM for WooCommerce — admin (settings tab) */
+
+.nextsim-progress {
+	max-width: 640px;
+	margin: 12px 0 0;
+}
+
+.nextsim-progress--empty .nextsim-progress__bar {
+	display: none;
+}
+
+.nextsim-progress__bar {
+	position: relative;
+	height: 14px;
+	overflow: hidden;
+	background: #dcdcde;
+	border-radius: 7px;
+}
+
+.nextsim-progress__bar span {
+	display: block;
+	height: 100%;
+	width: 0;
+	background: #2271b1;
+	border-radius: 7px;
+	transition: width 0.4s ease;
+}
+
+.nextsim-progress--done .nextsim-progress__bar span {
+	background: #00a32a;
+}
+
+.nextsim-progress--error .nextsim-progress__bar span,
+.nextsim-progress--cancelled .nextsim-progress__bar span {
+	background: #d63638;
+}
+
+.nextsim-progress--stalled .nextsim-progress__bar span {
+	background: #dba617;
+}
+
+/* Running but the total is not known yet: a sliding stripe instead of a width. */
+.nextsim-progress__bar[data-indeterminate="1"] span {
+	width: 30% !important;
+	animation: nextsim-progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes nextsim-progress-slide {
+	0% { transform: translateX(-100%); }
+	100% { transform: translateX(333%); }
+}
+
+.nextsim-progress__summary {
+	margin: 8px 0 2px;
+	font-weight: 600;
+}
+
+.nextsim-progress__meta {
+	margin: 0;
+	color: #646970;
+	font-size: 12px;
+}
+
+.nextsim-progress__stalled {
+	margin: 6px 0 0;
+	color: #996800;
+	font-size: 12px;
+}
+
+#nextsim-sync-result {
+	margin-left: 4px;
+}

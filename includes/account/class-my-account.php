@@ -14,6 +14,7 @@ namespace NextSIM\Woo\Account;
 use NextSIM\Woo\Api\Api_Client;
 use NextSIM\Woo\Api\Api_Exception;
 use NextSIM\Woo\Data\Order_Esim_Store;
+use NextSIM\Woo\Frontend\Install_Guide;
 use NextSIM\Woo\Fulfilment\Qr_Renderer;
 use NextSIM\Woo\Logger;
 
@@ -101,6 +102,7 @@ class My_Account {
 		foreach ( $esims as $esim ) {
 			$this->render_esim( $esim );
 		}
+		echo Install_Guide::html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo '</div>';
 	}
 

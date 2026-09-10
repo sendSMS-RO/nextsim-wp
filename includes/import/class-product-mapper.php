@@ -32,14 +32,25 @@ class Product_Mapper {
 		private Taxonomy_Sync $taxonomy,
 		private Settings $settings,
 		private Logger $logger,
-		private int $price_decimals = 2
+		private int $price_decimals = 2,
+		private ?Attribute_Sync $attributes = null
 	) {}
 
 	/**
 	 * @return self::RESULT_*
 	 */
 	public function upsert( Plan_Data $plan, int $run_timestamp ): string {
-		$product = $this->repository->find_by_package_id( $plan->id );
+		return $this->upsert_with( $plan, $run_timestamp, $this->repository->find_by_package_id( $plan->id ) );
+	}
+
+	/**
+	 * Upsert against an already-resolved product (null = not carried yet). Lets the
+	 * page import resolve a whole page of package ids with one query instead of one
+	 * lookup per plan.
+	 *
+	 * @return self::RESULT_*
+	 */
+	public function upsert_with( Plan_Data $plan, int $run_timestamp, ?\WC_Product $product ): string {
 		$term_id = $this->taxonomy->term_id_for_zone( $plan->location_zone_name );
 
 		if ( null === $product ) {
@@ -168,6 +179,13 @@ class Product_Mapper {
 		$product->update_meta_data( Product_Meta::MAX_ESIMS, (string) $plan->max_esims_per_order );
 		$product->update_meta_data( Product_Meta::ROUTE, $plan->route );
 		$product->update_meta_data( Product_Meta::LOCATION_ZONE, $plan->location_zone_name );
+		$product->update_meta_data( Product_Meta::COVERAGE, wp_json_encode( $plan->countries() ) );
+
+		// Global attributes for shop filtering (data amount, validity). Written when the
+		// caller saves the product below, so this is safe for a brand-new product too.
+		if ( null !== $this->attributes ) {
+			$this->attributes->assign( $product, $plan );
+		}
 	}
 
 	/**

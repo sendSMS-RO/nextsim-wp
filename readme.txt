@@ -1,11 +1,11 @@
 === nextSIM for WooCommerce ===
 Contributors: nextsim
 Tags: esim, woocommerce, travel, sim, mobile-data
-Requires at least: 6.4
-Tested up to: 6.9
+Requires at least: 6.5
+Tested up to: 7.1
 Requires PHP: 8.1
 WC requires at least: 8.0
-WC tested up to: 10.9
+WC tested up to: 11.1
 Stable tag: 0.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -38,6 +38,13 @@ and get your API access here: https://legal.sendsms.ro/register
   is checked before payment, so incompatible or expired codes are rejected at add-to-cart.
 * Multi-eSIM (Family) plans: sell a shared-data pack of several eSIMs in one order.
 * Data-consumption checks: customers see their remaining data from the "My eSIMs" account area.
+* Storefront ready: each plan shows the countries it covers, and plans can be filtered in the
+  shop by data amount and validity (global product attributes).
+* Built-in install guide: a short, device-agnostic "how to install your eSIM" appears next to
+  the QR on the order page and in the account, cutting the most common support question.
+* Admin-friendly sync: the catalog import runs as short background jobs that keep wp-admin
+  responsive even on slow hosting, with a live progress bar, counters and a Cancel button
+  under WooCommerce > Settings > nextSIM > Sync.
 
 = Become a reseller =
 

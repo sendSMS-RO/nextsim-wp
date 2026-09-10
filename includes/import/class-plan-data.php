@@ -69,6 +69,24 @@ final class Plan_Data {
 	}
 
 	/**
+	 * Unique upstream country codes this plan covers, derived from its operators.
+	 *
+	 * @return array<int, string>
+	 */
+	public function countries(): array {
+		$codes = array();
+
+		foreach ( $this->operators as $operator ) {
+			$code = strtoupper( trim( (string) ( $operator['country'] ?? '' ) ) );
+			if ( '' !== $code ) {
+				$codes[ $code ] = true;
+			}
+		}
+
+		return array_keys( $codes );
+	}
+
+	/**
 	 * A stable hash of the non-price attributes, to skip no-op product saves.
 	 */
 	public function attributes_hash(): string {
@@ -88,6 +106,7 @@ final class Plan_Data {
 					$this->max_esims_per_order,
 					$this->location_zone_name,
 					$this->route,
+					$this->countries(),
 				)
 			) ?: ''
 		);
