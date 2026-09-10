@@ -52,8 +52,22 @@ class Email_Esim_Delivery extends \WC_Email {
 			$this->placeholders['{order_number}'] = $order->get_order_number();
 		}
 
+		$sent = false;
+
 		if ( $this->is_enabled() && $this->get_recipient() ) {
-			$this->send( $this->get_recipient(), $this->get_subject(), $this->get_content(), $this->get_headers(), $this->get_attachments() );
+			$sent = (bool) $this->send( $this->get_recipient(), $this->get_subject(), $this->get_content(), $this->get_headers(), $this->get_attachments() );
+		}
+
+		// Leave a trace either way: the QR is on the order page regardless, but the
+		// shop should know when the customer did not get it by email (disabled email,
+		// missing address, mail failure) and can use "resend eSIM delivery email".
+		if ( $order instanceof \WC_Order ) {
+			$order->add_order_note(
+				$sent
+					? __( 'nextSIM: eSIM delivery email sent to the customer.', 'nextsim-woo' )
+					: __( 'nextSIM: eSIM delivery email NOT sent (email disabled, no billing email, or mail failure). Use "nextSIM: resend eSIM delivery email" once fixed.', 'nextsim-woo' )
+			);
+			$order->save();
 		}
 
 		$this->restore_locale();

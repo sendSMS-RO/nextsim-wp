@@ -48,6 +48,8 @@ final class Order_Esim_Store {
 	// Unix time the item entered ACTIVATING — lets the retry action recover a job
 	// that died mid-activation (stuck ACTIVATING) once it is provably stale.
 	public const ITEM_ACTIVATING_AT  = '_nextsim_activating_at';
+	// Number of eSIMs the API actually allocated when it clamped a Multi-eSIM order.
+	public const ITEM_ALLOCATED      = '_nextsim_allocated';
 
 	public const ITEM_STATUS_PENDING    = 'pending';
 	public const ITEM_STATUS_ACTIVATING = 'activating';
@@ -60,6 +62,55 @@ final class Order_Esim_Store {
 	 */
 	public static function is_nextsim_item( \WC_Order_Item_Product $item ): bool {
 		return '' !== (string) $item->get_meta( self::ITEM_PACKAGE_ID );
+	}
+
+	/**
+	 * Atomically move an item from PENDING to ACTIVATING. Two provision jobs for the
+	 * same item (duplicate payment hooks, two queue runners) both read "pending" and
+	 * would both call /activate — charging the reseller twice. A conditional UPDATE
+	 * lets exactly one of them win.
+	 *
+	 * @return bool True when this caller now owns the activation.
+	 */
+	public static function claim_activation( \WC_Order_Item_Product $item ): bool {
+		global $wpdb;
+
+		$status = (string) $item->get_meta( self::ITEM_STATUS );
+
+		// Items from before the PENDING marker existed have no status row yet; give
+		// them one so the conditional update below has something to flip. Insert-only
+		// ($unique = true): if a concurrent job already flipped the row, this is a
+		// no-op instead of resetting it back to "pending".
+		if ( '' === $status ) {
+			add_metadata( 'order_item', $item->get_id(), self::ITEM_STATUS, self::ITEM_STATUS_PENDING, true );
+		} elseif ( self::ITEM_STATUS_PENDING !== $status ) {
+			return false;
+		}
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.SlowDBQuery
+		$updated = $wpdb->update(
+			$wpdb->prefix . 'woocommerce_order_itemmeta',
+			array( 'meta_value' => self::ITEM_STATUS_ACTIVATING ),
+			array(
+				'order_item_id' => $item->get_id(),
+				'meta_key'      => self::ITEM_STATUS,
+				'meta_value'    => self::ITEM_STATUS_PENDING,
+			),
+			array( '%s' ),
+			array( '%d', '%s', '%s' )
+		);
+		// phpcs:enable
+
+		if ( 1 !== $updated ) {
+			return false;
+		}
+
+		// Keep the in-memory object in step with what the database now says.
+		$item->update_meta_data( self::ITEM_STATUS, self::ITEM_STATUS_ACTIVATING );
+		$item->update_meta_data( self::ITEM_ACTIVATING_AT, time() );
+		$item->save();
+
+		return true;
 	}
 
 	/**

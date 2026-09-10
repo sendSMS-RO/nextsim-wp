@@ -17,7 +17,6 @@ namespace NextSIM\Woo\Webhook;
 
 use NextSIM\Woo\Data\Order_Esim_Store;
 use NextSIM\Woo\Fulfilment\Provisioner;
-use NextSIM\Woo\Import\Importer;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -91,7 +90,6 @@ class Webhook_Controller {
 		if ( ! $item instanceof \WC_Order_Item_Product
 			|| ! Order_Esim_Store::is_nextsim_item( $item )
 			|| Order_Esim_Store::ITEM_STATUS_POLLING !== (string) $item->get_meta( Order_Esim_Store::ITEM_STATUS )
-			|| ! function_exists( 'as_enqueue_async_action' )
 		) {
 			return;
 		}
@@ -106,18 +104,9 @@ class Webhook_Controller {
 
 		set_transient( $guard, 1, MINUTE_IN_SECONDS );
 
-		// Resume the poll where it is, so a ping cannot reset the attempt counter and
-		// extend the polling window indefinitely.
-		as_enqueue_async_action(
-			Provisioner::HOOK_POLL,
-			array(
-				array(
-					'order_id' => $order_id,
-					'item_id'  => $item_id,
-					'try'      => (int) $item->get_meta( Order_Esim_Store::ITEM_POLL_ATTEMPTS ),
-				),
-			),
-			Importer::GROUP
-		);
+		// Pull the scheduled poll forward (replacing it, so the item keeps a single
+		// chain) and resume at the stored attempt, so a ping cannot reset the counter
+		// and extend the polling window indefinitely.
+		Provisioner::enqueue_poll_now( $order_id, $item_id, (int) $item->get_meta( Order_Esim_Store::ITEM_POLL_ATTEMPTS ) );
 	}
 }

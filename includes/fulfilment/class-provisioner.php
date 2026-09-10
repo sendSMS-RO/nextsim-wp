@@ -63,17 +63,35 @@ class Provisioner {
 			return;
 		}
 
+		// The shop cancelled or refunded the order while the job was queued: never
+		// charge the reseller for it.
+		if ( $this->order_is_void( $order ) ) {
+			$order->add_order_note( __( 'nextSIM: activation skipped — the order is cancelled or refunded.', 'nextsim-woo' ) );
+			$order->save();
+
+			return;
+		}
+
 		// A fresh (try=0) job may only start an activation from a clean slate; anything
 		// else is a duplicate enqueue (double-clicked retry, stray job). Backoff retries
 		// (try>0) legitimately resume the in-flight state they set below.
 		$item_status = (string) $item->get_meta( Order_Esim_Store::ITEM_STATUS );
-		if ( 0 === $try && ! in_array( $item_status, array( '', Order_Esim_Store::ITEM_STATUS_PENDING ), true ) ) {
-			return;
-		}
+		if ( 0 === $try ) {
+			if ( ! in_array( $item_status, array( '', Order_Esim_Store::ITEM_STATUS_PENDING ), true ) ) {
+				return;
+			}
 
-		$item->update_meta_data( Order_Esim_Store::ITEM_STATUS, Order_Esim_Store::ITEM_STATUS_ACTIVATING );
-		$item->update_meta_data( Order_Esim_Store::ITEM_ACTIVATING_AT, time() );
-		$item->save();
+			// Compare-and-set: of two concurrent jobs for this item only one gets here.
+			if ( ! Order_Esim_Store::claim_activation( $item ) ) {
+				$this->logger->warning( 'Provision job skipped: another job already claimed this item', array( 'order' => $order_id, 'item' => $item_id ) );
+
+				return;
+			}
+		} else {
+			$item->update_meta_data( Order_Esim_Store::ITEM_STATUS, Order_Esim_Store::ITEM_STATUS_ACTIVATING );
+			$item->update_meta_data( Order_Esim_Store::ITEM_ACTIVATING_AT, time() );
+			$item->save();
+		}
 
 		$package_id = (int) $item->get_meta( Order_Esim_Store::ITEM_PACKAGE_ID );
 		$topup_code = (string) $item->get_meta( Order_Esim_Store::ITEM_TOPUP_CODE );
@@ -187,6 +205,8 @@ class Provisioner {
 		// fewer than ordered. The token is kept so the reseller order is reconcilable.
 		if ( $quantity > 1 && isset( $created['plan_size'] ) && is_numeric( $created['plan_size'] ) && (int) $created['plan_size'] < $quantity ) {
 			$item->update_meta_data( Order_Esim_Store::ITEM_ORDER_TOKEN, $token );
+			// Remembered so the admin "retry" can deliver what was actually allocated.
+			$item->update_meta_data( Order_Esim_Store::ITEM_ALLOCATED, (int) $created['plan_size'] );
 			$item->save();
 			$this->fail_item( $order, $item, sprintf(
 				/* translators: 1: ordered count, 2: allocated count, 3: upstream order token. */
@@ -227,6 +247,15 @@ class Provisioner {
 		// Poll only items actively awaiting provisioning. A stray poll for an unpaid,
 		// completed, or failed item (e.g. via the public webhook) must be a no-op.
 		if ( Order_Esim_Store::ITEM_STATUS_POLLING !== (string) $item->get_meta( Order_Esim_Store::ITEM_STATUS ) ) {
+			return;
+		}
+
+		// Order cancelled/refunded by the shop meanwhile: stop the chain. The upstream
+		// order may still complete, so the QR is neither delivered nor emailed.
+		if ( $this->order_is_void( $order ) ) {
+			$order->add_order_note( __( 'nextSIM: polling stopped — the order is cancelled or refunded. Check the reseller account for the upstream order.', 'nextsim-woo' ) );
+			$order->save();
+
 			return;
 		}
 
@@ -325,6 +354,10 @@ class Provisioner {
 			$order = $fresh;
 		}
 
+		if ( $this->order_is_void( $order ) ) {
+			return;
+		}
+
 		$completed_ids = array();
 		$all_completed = true;
 		$has_non_esim  = false;
@@ -407,6 +440,100 @@ class Provisioner {
 		// A failure can be the order's LAST terminal transition — without this, the
 		// delivery email for already-completed sibling items would never be sent.
 		$this->maybe_complete_order( $order );
+	}
+
+	private function order_is_void( \WC_Order $order ): bool {
+		return $order->has_status( array( 'cancelled', 'refunded', 'failed', 'trash' ) );
+	}
+
+	/**
+	 * Queue the poll for an item to run now, replacing any poll already scheduled for
+	 * it — an item must never have two polling chains.
+	 */
+	public static function enqueue_poll_now( int $order_id, int $item_id, int $try ): void {
+		self::cancel_pending_jobs( $order_id, $item_id, array( self::HOOK_POLL ) );
+
+		if ( function_exists( 'as_enqueue_async_action' ) ) {
+			as_enqueue_async_action(
+				self::HOOK_POLL,
+				array( array( 'order_id' => $order_id, 'item_id' => $item_id, 'try' => $try ) ),
+				Importer::GROUP
+			);
+		}
+	}
+
+	/**
+	 * Queue a fresh provisioning job for an item, replacing any job already queued for it.
+	 */
+	public static function enqueue_provision_now( int $order_id, int $item_id ): void {
+		self::cancel_pending_jobs( $order_id, $item_id );
+
+		if ( function_exists( 'as_enqueue_async_action' ) ) {
+			as_enqueue_async_action(
+				self::HOOK_PROVISION,
+				array( array( 'order_id' => $order_id, 'item_id' => $item_id, 'try' => 0 ) ),
+				Importer::GROUP
+			);
+		}
+	}
+
+	/**
+	 * Ids of the pending Action Scheduler jobs for one order item.
+	 *
+	 * @param array<int, string> $hooks
+	 * @return array<int, int>
+	 */
+	public static function pending_job_ids( int $order_id, int $item_id, array $hooks = array( self::HOOK_PROVISION, self::HOOK_POLL ) ): array {
+		if ( ! function_exists( 'as_get_scheduled_actions' ) || ! class_exists( '\ActionScheduler_Store' ) ) {
+			return array();
+		}
+
+		$ids = array();
+
+		foreach ( $hooks as $hook ) {
+			$found = as_get_scheduled_actions(
+				array(
+					'hook'     => $hook,
+					'status'   => \ActionScheduler_Store::STATUS_PENDING,
+					// Args are stored as JSON; the trailing comma keeps 12 from matching 120.
+					'search'   => sprintf( '"order_id":%d,"item_id":%d,', $order_id, $item_id ),
+					'per_page' => 20,
+				),
+				'ids'
+			);
+
+			foreach ( (array) $found as $id ) {
+				$ids[] = (int) $id;
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
+	}
+
+	/**
+	 * Cancel the pending jobs for one order item.
+	 *
+	 * @param array<int, string> $hooks
+	 * @return int Number of jobs cancelled.
+	 */
+	public static function cancel_pending_jobs( int $order_id, int $item_id, array $hooks = array( self::HOOK_PROVISION, self::HOOK_POLL ) ): int {
+		$ids = self::pending_job_ids( $order_id, $item_id, $hooks );
+
+		if ( array() === $ids ) {
+			return 0;
+		}
+
+		$store = \ActionScheduler_Store::instance();
+
+		foreach ( $ids as $id ) {
+			try {
+				$store->cancel_action( (string) $id );
+			} catch ( \Throwable $e ) {
+				// Already run or gone — nothing to cancel.
+			}
+		}
+
+		return count( $ids );
 	}
 
 	private function reenqueue( string $hook, int $order_id, int $item_id, int $try, int $delay ): void {

@@ -118,7 +118,8 @@ class Checkout_Fields {
 			return false;
 		}
 
-		return true;
+		// Never override a rejection from an earlier validation callback.
+		return (bool) $passed;
 	}
 
 	/**
@@ -268,6 +269,13 @@ class Checkout_Fields {
 				continue;
 			}
 
+			// This hook fires several times per request on the same cart product
+			// object: apply the surcharge once, on top of whatever price the line has
+			// (so currency switchers / discount plugins running earlier are respected).
+			if ( '' !== (string) $product->get_meta( '_nextsim_extra_applied' ) ) {
+				continue;
+			}
+
 			$extra = (float) $product->get_meta( Product_Meta::EXTRA_ESIM_PRICE );
 
 			// extra_esim_price is the reseller's EUR COST per additional eSIM — apply
@@ -276,13 +284,8 @@ class Checkout_Fields {
 				$extra = $this->pricing->compute( $extra, $product->get_category_ids() );
 			}
 
-			// Read the base from a pristine product: the cart clone's price may already
-			// have been mutated by an earlier run of this hook, and get_regular_price()
-			// would silently cancel an active sale.
-			$pristine = wc_get_product( $product->get_id() );
-			$base     = $pristine instanceof \WC_Product ? (float) $pristine->get_price() : (float) $product->get_regular_price();
-
-			$product->set_price( $base + ( $extra * ( $qty - 1 ) ) );
+			$product->set_price( (float) $product->get_price() + ( $extra * ( $qty - 1 ) ) );
+			$product->add_meta_data( '_nextsim_extra_applied', '1', true );
 		}
 	}
 
