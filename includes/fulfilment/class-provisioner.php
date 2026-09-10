@@ -139,10 +139,10 @@ class Provisioner {
 				$this->fail_item( $order, $item, $repl
 					? sprintf(
 						/* translators: %d: package id. */
-						__( 'This plan was retired by the provider; no charge was made. It is replaced by package #%d.', 'nextsim-woo' ),
+						__( 'This plan has been withdrawn from the catalog; no charge was made. It is replaced by package #%d.', 'nextsim-woo' ),
 						$repl
 					)
-					: __( 'This plan was retired by the provider; no charge was made.', 'nextsim-woo' )
+					: __( 'This plan has been withdrawn from the catalog; no charge was made.', 'nextsim-woo' )
 				);
 
 				return;
@@ -165,7 +165,7 @@ class Provisioner {
 			);
 
 			if ( $e->is_retryable() ) {
-				$message .= ' ' . __( 'The request may have reached the provider — check the reseller account before retrying (credit may have been charged).', 'nextsim-woo' );
+				$message .= ' ' . __( 'The request may have reached the API — check the reseller account before retrying (credit may have been charged).', 'nextsim-woo' );
 			}
 
 			$this->fail_item( $order, $item, $message );
@@ -190,7 +190,7 @@ class Provisioner {
 			$item->save();
 			$this->fail_item( $order, $item, sprintf(
 				/* translators: 1: ordered count, 2: allocated count, 3: upstream order token. */
-				__( 'Ordered %1$d eSIMs but the provider allocated %2$d (upstream order %3$s). Order held for review.', 'nextsim-woo' ),
+				__( 'Ordered %1$d eSIMs but only %2$d were allocated (upstream order %3$s). Order held for review.', 'nextsim-woo' ),
 				$quantity,
 				(int) $created['plan_size'],
 				$token
@@ -427,6 +427,6 @@ class Provisioner {
 	}
 
 	private function callback_url( int $order_id, int $item_id ): string {
-		return rest_url( sprintf( 'nextsim-woo/v1/callback/order/%d/item/%d', $order_id, $item_id ) );
+		return \NextSIM\Woo\Webhook\Webhook_Controller::callback_url( $order_id, $item_id );
 	}
 }

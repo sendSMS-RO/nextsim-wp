@@ -106,6 +106,68 @@ class Order_Manager {
 	}
 
 	/**
+	 * Re-queue the provisioning work of every order still marked "activating": items
+	 * waiting for their QR resume polling, items never started get a fresh provision
+	 * job. Items caught mid-activation are left alone (an activation may have gone
+	 * through upstream; the admin "retry" action handles those after the stale window).
+	 *
+	 * Used on plugin activation, where a paused Action Scheduler queue may have run our
+	 * hooks with no listener attached and marked them complete.
+	 *
+	 * @return int Number of items re-queued.
+	 */
+	public static function requeue_in_flight(): int {
+		if ( ! function_exists( 'wc_get_orders' ) || ! function_exists( 'as_enqueue_async_action' ) ) {
+			return 0;
+		}
+
+		$order_ids = wc_get_orders(
+			array(
+				'limit'      => -1,
+				'return'     => 'ids',
+				'meta_key'   => Order_Esim_Store::ORDER_STATE, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'meta_value' => Order_Esim_Store::STATE_ACTIVATING, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+			)
+		);
+
+		$requeued = 0;
+
+		foreach ( (array) $order_ids as $order_id ) {
+			$order = wc_get_order( (int) $order_id );
+			if ( ! $order instanceof \WC_Order ) {
+				continue;
+			}
+
+			foreach ( $order->get_items() as $item_id => $item ) {
+				if ( ! $item instanceof \WC_Order_Item_Product || ! Order_Esim_Store::is_nextsim_item( $item ) ) {
+					continue;
+				}
+
+				$status = (string) $item->get_meta( Order_Esim_Store::ITEM_STATUS );
+
+				if ( Order_Esim_Store::ITEM_STATUS_POLLING === $status ) {
+					$hook = Provisioner::HOOK_POLL;
+					$try  = (int) $item->get_meta( Order_Esim_Store::ITEM_POLL_ATTEMPTS );
+				} elseif ( in_array( $status, array( '', Order_Esim_Store::ITEM_STATUS_PENDING ), true ) ) {
+					$hook = Provisioner::HOOK_PROVISION;
+					$try  = 0;
+				} else {
+					continue;
+				}
+
+				as_enqueue_async_action(
+					$hook,
+					array( array( 'order_id' => (int) $order_id, 'item_id' => (int) $item_id, 'try' => $try ) ),
+					Importer::GROUP
+				);
+				++$requeued;
+			}
+		}
+
+		return $requeued;
+	}
+
+	/**
 	 * @param int $order_id
 	 */
 	public function on_order_paid( $order_id ): void {

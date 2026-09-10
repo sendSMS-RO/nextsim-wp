@@ -24,6 +24,12 @@ final class Activator {
 			Account\My_Account::add_endpoints();
 		}
 
+		// Orders paid while the plugin was inactive (or whose jobs ran with no listener)
+		// would otherwise stay "provisioning" forever.
+		if ( class_exists( 'NextSIM\\Woo\\Fulfilment\\Order_Manager' ) ) {
+			Fulfilment\Order_Manager::requeue_in_flight();
+		}
+
 		flush_rewrite_rules();
 	}
 }

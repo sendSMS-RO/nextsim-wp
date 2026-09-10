@@ -15,7 +15,8 @@ defined( 'ABSPATH' ) || exit;
 
 class Api_Client {
 
-	private const TIMEOUT = 20;
+	private const TIMEOUT       = 20;
+	private const SHORT_TIMEOUT = 8;
 
 	public function __construct(
 		private string $host,
@@ -106,7 +107,8 @@ class Api_Client {
 	 */
 	public function check_topup_compatibility( string $activation_code, int $package_id ): array {
 		$path = '/api/v2/packages/esim/' . rawurlencode( $activation_code ) . '/compatibility/' . $package_id;
-		$data = $this->request( 'GET', $path )['data'] ?? array();
+		// Called from add-to-cart in the customer's request: keep the wait short.
+		$data = $this->request( 'GET', $path, array(), null, self::SHORT_TIMEOUT )['data'] ?? array();
 
 		return array(
 			'compatible' => (bool) ( $data['compatible'] ?? false ),
@@ -132,16 +134,19 @@ class Api_Client {
 	 *
 	 * @throws Api_Exception On network error or non-2xx response.
 	 */
-	private function request( string $method, string $path, array $query = array(), ?array $body = null ): array {
+	private function request( string $method, string $path, array $query = array(), ?array $body = null, int $timeout = self::TIMEOUT ): array {
 		$url = $this->host . $path;
 
 		if ( array() !== $query ) {
 			$url = add_query_arg( array_map( 'rawurlencode', array_map( 'strval', $query ) ), $url );
 		}
 
+		// Activation codes and order tokens are path segments; log the route shape only.
+		$log_path = preg_replace( array( '#(/esim/)[^/]+#', '#(/order/)[^/]+#' ), array( '$1{code}', '$1{token}' ), $path );
+
 		$args = array(
 			'method'  => $method,
-			'timeout' => self::TIMEOUT,
+			'timeout' => $timeout,
 			'headers' => array(
 				'Authorization' => 'Bearer ' . $this->token,
 				'Accept'        => 'application/json',
@@ -156,7 +161,7 @@ class Api_Client {
 		$response = wp_remote_request( $url, $args );
 
 		if ( is_wp_error( $response ) ) {
-			$this->logger->error( 'API network error', array( 'path' => $path, 'error' => $response->get_error_message() ) );
+			$this->logger->error( 'API network error', array( 'path' => $log_path, 'error' => $response->get_error_message() ) );
 
 			throw new Api_Exception( esc_html( $response->get_error_message() ), 0 );
 		}
@@ -172,7 +177,7 @@ class Api_Client {
 
 			$this->logger->warning(
 				'API error response',
-				array( 'path' => $path, 'status' => $status, 'error_code' => $error_code )
+				array( 'path' => $log_path, 'status' => $status, 'error_code' => $error_code )
 			);
 
 			// The decoded body is kept for callers that inspect error fields; it is never output as-is.

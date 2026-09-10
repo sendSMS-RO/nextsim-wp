@@ -21,6 +21,9 @@ defined( 'ABSPATH' ) || exit;
 
 class Checkout_Fields {
 
+	// Upstream activation-code lookups allowed per visitor per minute at add-to-cart.
+	private const TOPUP_CHECKS_PER_MINUTE = 5;
+
 	public function __construct(
 		private ?Pricing_Engine $pricing = null,
 		private ?Api_Client $client = null
@@ -130,6 +133,26 @@ class Checkout_Fields {
 	private function topup_code_is_valid( string $code, \WC_Product $product ): bool {
 		if ( null === $this->client ) {
 			return true;
+		}
+
+		// Cheap checks first: the endpoint is reachable by any visitor and every call
+		// below spends an authenticated request against the reseller API.
+		if ( 1 !== preg_match( '/^[A-Za-z0-9-]{6,40}$/', $code ) ) {
+			wc_add_notice(
+				__( 'That does not look like an activation code. Check the code, or leave the field empty to buy a new eSIM.', 'nextsim-woo' ),
+				'error'
+			);
+
+			return false;
+		}
+
+		if ( ! $this->topup_check_allowed() ) {
+			wc_add_notice(
+				__( 'Too many activation-code checks. Please wait a minute and try again.', 'nextsim-woo' ),
+				'error'
+			);
+
+			return false;
 		}
 
 		$package_id = (int) $product->get_meta( Product_Meta::PACKAGE_ID );
@@ -286,5 +309,28 @@ class Checkout_Fields {
 		if ( $qty > 1 ) {
 			$item->update_meta_data( Order_Esim_Store::ITEM_QUANTITY, $qty );
 		}
+	}
+
+	/**
+	 * Per-visitor throttle for the add-to-cart top-up check: at most a handful of
+	 * upstream lookups per minute, so the public form cannot be used to enumerate
+	 * activation codes or to burn the reseller's API rate limit.
+	 */
+	private function topup_check_allowed(): bool {
+		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['REMOTE_ADDR'] ) ) : '';
+		if ( '' === $ip ) {
+			return true;
+		}
+
+		$key   = 'nextsim_woo_topup_chk_' . md5( $ip );
+		$count = (int) get_transient( $key );
+
+		if ( $count >= self::TOPUP_CHECKS_PER_MINUTE ) {
+			return false;
+		}
+
+		set_transient( $key, $count + 1, MINUTE_IN_SECONDS );
+
+		return true;
 	}
 }

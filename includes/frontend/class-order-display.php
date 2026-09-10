@@ -47,7 +47,9 @@ class Order_Display {
 			if ( Order_Esim_Store::ITEM_STATUS_COMPLETED === $status ) {
 				$blocks .= $this->render_item( $item );
 			} elseif ( Order_Esim_Store::ITEM_STATUS_FAILED === $status ) {
-				$blocks .= '<p class="nextsim-esim-error">' . esc_html( (string) $item->get_meta( Order_Esim_Store::ITEM_LAST_ERROR ) ) . '</p>';
+				// The detailed reason (upstream messages, order tokens, credit notes) is
+				// for the shop, in the order notes — the customer gets a plain status.
+				$blocks .= '<p class="nextsim-esim-error">' . esc_html__( 'We could not deliver this eSIM automatically. The shop has been notified and will contact you shortly.', 'nextsim-woo' ) . '</p>';
 			} elseif ( '' !== $status ) {
 				$blocks .= '<p class="nextsim-esim-pending">' . esc_html__( 'Your eSIM is being provisioned. This page will show the QR code shortly.', 'nextsim-woo' ) . '</p>';
 			}
