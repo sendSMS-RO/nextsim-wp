@@ -18,7 +18,6 @@ final class Settings {
 
 	public const OPT_API_HOST            = 'nextsim_woo_api_host';
 	public const OPT_API_TOKEN           = 'nextsim_woo_api_token';
-	public const OPT_ENVIRONMENT         = 'nextsim_woo_environment';
 	public const OPT_MARKUP_PERCENT      = 'nextsim_woo_markup_percent';
 	public const OPT_DEFAULT_PRICE_MODE  = 'nextsim_woo_default_price_mode';
 	public const OPT_CATEGORY_MARKUP     = 'nextsim_woo_category_markup';
@@ -37,9 +36,6 @@ final class Settings {
 	public const EXCHANGE_FIXED = 'fixed';
 	public const EXCHANGE_OFF   = 'off';
 
-	public const ENV_LIVE = 'live';
-	public const ENV_TEST = 'test';
-
 	public function api_host(): string {
 		$host = (string) get_option( self::OPT_API_HOST, 'https://nextsim.eu' );
 
@@ -48,10 +44,6 @@ final class Settings {
 
 	public function api_token(): string {
 		return (string) get_option( self::OPT_API_TOKEN, '' );
-	}
-
-	public function environment(): string {
-		return self::ENV_TEST === get_option( self::OPT_ENVIRONMENT ) ? self::ENV_TEST : self::ENV_LIVE;
 	}
 
 	public function is_configured(): bool {

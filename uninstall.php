@@ -14,7 +14,6 @@ defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 $nextsim_woo_options = array(
 	'nextsim_woo_api_host',
 	'nextsim_woo_api_token',
-	'nextsim_woo_environment',
 	'nextsim_woo_markup_percent',
 	'nextsim_woo_default_price_mode',
 	'nextsim_woo_category_markup',

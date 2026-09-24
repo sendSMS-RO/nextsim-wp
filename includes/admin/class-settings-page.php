@@ -194,16 +194,6 @@ class Settings_Page {
 				'type'  => 'password',
 			),
 			array(
-				'title'   => __( 'Environment', 'nextsim-woo' ),
-				'id'      => Settings::OPT_ENVIRONMENT,
-				'type'    => 'select',
-				'default' => Settings::ENV_LIVE,
-				'options' => array(
-					Settings::ENV_LIVE => __( 'Live', 'nextsim-woo' ),
-					Settings::ENV_TEST => __( 'Test', 'nextsim-woo' ),
-				),
-			),
-			array(
 				'type' => 'sectionend',
 				'id'   => 'nextsim_woo_connection',
 			),

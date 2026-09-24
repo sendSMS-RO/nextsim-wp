@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-09-10T12:34:10+00:00\n"
+"POT-Creation-Date: 2026-09-24T11:45:23+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: nextsim-woo\n"
@@ -54,8 +54,8 @@ msgid "You have no eSIMs yet."
 msgstr ""
 
 #: includes/account/class-my-account.php:118
-#: includes/frontend/class-order-display.php:77
-#: templates/email/esim-delivery.php:52
+#: includes/frontend/class-order-display.php:79
+#: templates/email/esim-delivery.php:56
 msgid "eSIM QR code"
 msgstr ""
 
@@ -117,12 +117,12 @@ msgid "Connection"
 msgstr ""
 
 #: includes/admin/class-settings-page.php:58
-#: includes/admin/class-settings-page.php:219
+#: includes/admin/class-settings-page.php:209
 msgid "Pricing"
 msgstr ""
 
 #: includes/admin/class-settings-page.php:59
-#: includes/admin/class-settings-page.php:279
+#: includes/admin/class-settings-page.php:269
 msgid "Sync"
 msgstr ""
 
@@ -148,315 +148,311 @@ msgstr ""
 msgid "API token"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:197
-msgid "Environment"
-msgstr ""
-
-#: includes/admin/class-settings-page.php:202
-msgid "Live"
-msgstr ""
-
-#: includes/admin/class-settings-page.php:203
-msgid "Test"
-msgstr ""
-
-#: includes/admin/class-settings-page.php:221
+#: includes/admin/class-settings-page.php:211
 msgid "Retail price = reseller price × (1 + markup%). Products switched to manual keep their price on every import."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:225
+#: includes/admin/class-settings-page.php:215
 msgid "Default price mode"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:230
+#: includes/admin/class-settings-page.php:220
 msgid "Automatic (markup)"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:231
+#: includes/admin/class-settings-page.php:221
 msgid "Manual per product"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:235
+#: includes/admin/class-settings-page.php:225
 msgid "Markup (%)"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:245
+#: includes/admin/class-settings-page.php:235
 msgid "EUR exchange rate"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:249
+#: includes/admin/class-settings-page.php:239
 msgid "nextSIM costs are in EUR. Choose how they are converted to the store currency before the markup is applied. Ignored when the store currency is EUR."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:251
+#: includes/admin/class-settings-page.php:241
 msgid "Automatic (ECB daily rate)"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:252
+#: includes/admin/class-settings-page.php:242
 msgid "Fixed rate"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:253
+#: includes/admin/class-settings-page.php:243
 msgid "Off (no conversion)"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:257
+#: includes/admin/class-settings-page.php:247
 msgid "Fixed rate (1 EUR =)"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:260
+#: includes/admin/class-settings-page.php:250
 msgid "Value of 1 EUR in the store currency, e.g. 5.07 for RON. Used in Fixed mode, and as a fallback if the automatic rate has never been fetched."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:281
+#: includes/admin/class-settings-page.php:271
 msgid "Control the automatic plan import. Use the filters to import only the plans you want. Note: plans that disappear from the API (or fall outside narrowed filters) are marked \"out of stock\" on the next sync, and restored automatically if they come back."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:285
+#: includes/admin/class-settings-page.php:275
 msgid "Sync frequency"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:290
+#: includes/admin/class-settings-page.php:280
 msgid "Hourly"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:291
+#: includes/admin/class-settings-page.php:281
 msgid "Twice daily"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:292
+#: includes/admin/class-settings-page.php:282
 msgid "Daily"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:296
+#: includes/admin/class-settings-page.php:286
 msgid "Routes filter"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:299
+#: includes/admin/class-settings-page.php:289
 msgid "Comma-separated route codes (e.g. VDF001). Leave empty to import all."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:302
+#: includes/admin/class-settings-page.php:292
 msgid "Countries filter"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:305
+#: includes/admin/class-settings-page.php:295
 msgid "Comma-separated ISO country codes (e.g. RO,ES,FR). Leave empty to import all."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:308
+#: includes/admin/class-settings-page.php:298
 msgid "Regions filter"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:311
+#: includes/admin/class-settings-page.php:301
 msgid "Comma-separated region codes (e.g. EU_GB). Leave empty to import all."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:314
+#: includes/admin/class-settings-page.php:304
 msgid "Low balance alert (EUR)"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:322
+#: includes/admin/class-settings-page.php:312
 msgid "Show an admin warning when the reseller balance drops below this. 0 disables."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:334
+#: includes/admin/class-settings-page.php:324
 msgid "Test connection"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:345
+#: includes/admin/class-settings-page.php:335
 msgid "Sync now"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:347
+#: includes/admin/class-settings-page.php:337
 msgid "Cancel"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:391
-#: includes/admin/class-settings-page.php:524
+#: includes/admin/class-settings-page.php:381
+#: includes/admin/class-settings-page.php:514
 msgid "No progress for more than 5 minutes. Background jobs may not be running on this site — check WooCommerce > Status > Scheduled Actions and WP-Cron."
 msgstr ""
 
 #. translators: %s: number of new products.
-#: includes/admin/class-settings-page.php:408
-#: includes/admin/class-settings-page.php:517
+#: includes/admin/class-settings-page.php:398
+#: includes/admin/class-settings-page.php:507
 #, php-format
 msgid "%s new"
 msgstr ""
 
 #. translators: %s: number of updated products.
-#: includes/admin/class-settings-page.php:410
-#: includes/admin/class-settings-page.php:519
+#: includes/admin/class-settings-page.php:400
+#: includes/admin/class-settings-page.php:509
 #, php-format
 msgid "%s updated"
 msgstr ""
 
 #. translators: %s: number of unchanged products.
-#: includes/admin/class-settings-page.php:412
-#: includes/admin/class-settings-page.php:521
+#: includes/admin/class-settings-page.php:402
+#: includes/admin/class-settings-page.php:511
 #, php-format
 msgid "%s unchanged"
 msgstr ""
 
 #. translators: %s: number of plans that failed to import.
-#: includes/admin/class-settings-page.php:417
-#: includes/admin/class-settings-page.php:523
+#: includes/admin/class-settings-page.php:407
+#: includes/admin/class-settings-page.php:513
 #, php-format
 msgid "%s failed"
 msgstr ""
 
 #. translators: %s: number of products taken out of stock.
-#: includes/admin/class-settings-page.php:422
+#: includes/admin/class-settings-page.php:412
 #, php-format
 msgid "%s taken out of stock"
 msgstr ""
 
 #. translators: %s: elapsed time, e.g. "12 min 5 s".
-#: includes/admin/class-settings-page.php:434
-#: includes/admin/class-settings-page.php:515
+#: includes/admin/class-settings-page.php:424
+#: includes/admin/class-settings-page.php:505
 #, php-format
 msgid "Running for %s."
 msgstr ""
 
 #. translators: %s: date and time.
-#: includes/admin/class-settings-page.php:445
+#: includes/admin/class-settings-page.php:435
 #, php-format
 msgid "Finished %s."
 msgstr ""
 
 #. translators: 1: date and time, 2: duration.
-#: includes/admin/class-settings-page.php:449
+#: includes/admin/class-settings-page.php:439
 #, php-format
 msgid "Finished %1$s, took %2$s."
 msgstr ""
 
 #. translators: 1: hours, 2: minutes.
-#: includes/admin/class-settings-page.php:460
+#: includes/admin/class-settings-page.php:450
 #, php-format
 msgid "%1$d h %2$d min"
 msgstr ""
 
 #. translators: 1: minutes, 2: seconds.
-#: includes/admin/class-settings-page.php:465
+#: includes/admin/class-settings-page.php:455
 #, php-format
 msgid "%1$d min %2$d s"
 msgstr ""
 
 #. translators: %d: seconds.
-#: includes/admin/class-settings-page.php:469
+#: includes/admin/class-settings-page.php:459
 #, php-format
 msgid "%d s"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:507
+#: includes/admin/class-settings-page.php:497
 msgid "Testing…"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:508
-#: includes/import/class-importer.php:967
+#: includes/admin/class-settings-page.php:498
+#: includes/import/class-importer.php:972
 msgid "Starting…"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:511
+#: includes/admin/class-settings-page.php:501
 msgid "Cancelling…"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:512
+#: includes/admin/class-settings-page.php:502
 msgid "Request failed."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:513
+#: includes/admin/class-settings-page.php:503
 msgid "Sync started."
 msgstr ""
 
+#: includes/admin/class-settings-page.php:524
 #: includes/admin/class-settings-page.php:534
-#: includes/admin/class-settings-page.php:544
-#: includes/admin/class-settings-page.php:561
-#: includes/admin/class-settings-page.php:600
+#: includes/admin/class-settings-page.php:551
+#: includes/admin/class-settings-page.php:590
 msgid "Permission denied."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:551
+#: includes/admin/class-settings-page.php:541
 msgid "Sync cancelled."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:575
+#: includes/admin/class-settings-page.php:565
 msgid "Enter the API host and token first."
 msgstr ""
 
 #. translators: %s: reseller email.
-#: includes/admin/class-settings-page.php:591
+#: includes/admin/class-settings-page.php:581
 #, php-format
 msgid "Connected as %s"
 msgstr ""
 
-#: includes/admin/class-settings-page.php:604
+#: includes/admin/class-settings-page.php:594
 msgid "Enter and save the API host and token first."
 msgstr ""
 
-#: includes/admin/class-settings-page.php:609
+#: includes/admin/class-settings-page.php:599
 msgid "Sync started. It runs in the background; you can leave this page."
 msgstr ""
 
 #. translators: %d: HTTP status code.
-#: includes/api/class-api-client.php:212
+#: includes/api/class-api-client.php:219
 #, php-format
 msgid "nextSIM API returned HTTP %d."
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:59
+#: includes/checkout/class-checkout-fields.php:62
 msgid "Top-up activation code (optional)"
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:61
+#: includes/checkout/class-checkout-fields.php:64
 msgid "e.g. K2-21XA8K-12345"
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:62
+#: includes/checkout/class-checkout-fields.php:65
 msgid "Leave empty to buy a new eSIM. Enter your existing activation code to top it up."
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:69
+#: includes/checkout/class-checkout-fields.php:72
 msgid "Number of eSIMs (shared data)"
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:96
+#: includes/checkout/class-checkout-fields.php:99
 msgid "This plan does not support top-up."
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:103
+#: includes/checkout/class-checkout-fields.php:106
 msgid "Invalid number of eSIMs for this plan."
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:109
+#: includes/checkout/class-checkout-fields.php:112
 msgid "Top-up cannot be combined with buying multiple eSIMs."
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:142
-msgid "We could not find an eSIM with this activation code. Check the code, or leave the field empty to buy a new eSIM."
-msgstr ""
-
-#: includes/checkout/class-checkout-fields.php:147
-msgid "We could not verify your activation code right now. Please try again in a moment."
+#: includes/checkout/class-checkout-fields.php:143
+msgid "That does not look like an activation code. Check the code, or leave the field empty to buy a new eSIM."
 msgstr ""
 
 #: includes/checkout/class-checkout-fields.php:152
+msgid "Too many activation-code checks. Please wait a minute and try again."
+msgstr ""
+
+#: includes/checkout/class-checkout-fields.php:166
+msgid "We could not find an eSIM with this activation code. Check the code, or leave the field empty to buy a new eSIM."
+msgstr ""
+
+#: includes/checkout/class-checkout-fields.php:171
+msgid "We could not verify your activation code right now. Please try again in a moment."
+msgstr ""
+
+#: includes/checkout/class-checkout-fields.php:176
 msgid "This activation code cannot be topped up with this plan."
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:163
+#: includes/checkout/class-checkout-fields.php:187
 msgid "This eSIM has expired and can no longer be topped up. Leave the field empty to buy a new eSIM instead."
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:164
+#: includes/checkout/class-checkout-fields.php:188
 msgid "This plan is not compatible with your eSIM. Choose a compatible plan, or leave the field empty to buy a new eSIM."
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:210
+#: includes/checkout/class-checkout-fields.php:234
 msgid "Top-up code"
 msgstr ""
 
-#: includes/checkout/class-checkout-fields.php:217
+#: includes/checkout/class-checkout-fields.php:241
 msgid "eSIMs"
 msgstr ""
 
@@ -474,6 +470,14 @@ msgstr ""
 
 #: includes/emails/class-email-esim-delivery.php:38
 msgid "Your eSIM is ready"
+msgstr ""
+
+#: includes/emails/class-email-esim-delivery.php:67
+msgid "nextSIM: eSIM delivery email sent to the customer."
+msgstr ""
+
+#: includes/emails/class-email-esim-delivery.php:68
+msgid "nextSIM: eSIM delivery email NOT sent (email disabled, no billing email, or mail failure). Use \"nextSIM: resend eSIM delivery email\" once fixed."
 msgstr ""
 
 #: includes/frontend/class-install-guide.php:23
@@ -521,30 +525,34 @@ msgid "Tip: install over Wi-Fi before you travel. The data allowance usually sta
 msgstr ""
 
 #: includes/frontend/class-order-display.php:52
+msgid "We could not deliver this eSIM automatically. The shop has been notified and will contact you shortly."
+msgstr ""
+
+#: includes/frontend/class-order-display.php:54
 msgid "Your eSIM is being provisioned. This page will show the QR code shortly."
 msgstr ""
 
-#: includes/frontend/class-order-display.php:60
+#: includes/frontend/class-order-display.php:62
 msgid "Your eSIM"
 msgstr ""
 
 #. translators: %d: index
-#: includes/frontend/class-order-display.php:72
+#: includes/frontend/class-order-display.php:74
 #, php-format
 msgid "eSIM %d"
 msgstr ""
 
-#: includes/frontend/class-order-display.php:81
+#: includes/frontend/class-order-display.php:83
 msgid "Activation code"
 msgstr ""
 
-#: includes/frontend/class-order-display.php:86
-#: templates/email/esim-delivery.php:65
+#: includes/frontend/class-order-display.php:88
+#: templates/email/esim-delivery.php:69
 msgid "Install on iPhone"
 msgstr ""
 
-#: includes/frontend/class-order-display.php:89
-#: templates/email/esim-delivery.php:68
+#: includes/frontend/class-order-display.php:91
+#: templates/email/esim-delivery.php:72
 msgid "Install on Android"
 msgstr ""
 
@@ -560,108 +568,134 @@ msgid_plural "Covers:"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/fulfilment/class-order-manager.php:41
+#: includes/fulfilment/class-order-manager.php:45
 msgid "nextSIM: retry eSIM provisioning"
 msgstr ""
 
-#: includes/fulfilment/class-order-manager.php:75
+#: includes/fulfilment/class-order-manager.php:46
+msgid "nextSIM: resend eSIM delivery email"
+msgstr ""
+
+#: includes/fulfilment/class-order-manager.php:80
 msgid "nextSIM: an eSIM was stuck activating and is being retried — the previous attempt may have charged the reseller account, so verify it before assuming a double charge."
 msgstr ""
 
+#. translators: 1: eSIMs allocated upstream, 2: eSIMs ordered.
+#: includes/fulfilment/class-order-manager.php:97
+#, php-format
+msgid "nextSIM: delivering the %1$d eSIM(s) that were allocated out of %2$d ordered — refund the difference to the customer."
+msgstr ""
+
 #. translators: %d: number of items.
-#: includes/fulfilment/class-order-manager.php:103
+#: includes/fulfilment/class-order-manager.php:123
 #, php-format
 msgid "nextSIM: provisioning retried for %d item(s)."
 msgstr ""
 
-#: includes/fulfilment/class-order-manager.php:135
+#: includes/fulfilment/class-order-manager.php:145
+msgid "nextSIM: no delivered eSIM on this order yet — nothing to email."
+msgstr ""
+
+#: includes/fulfilment/class-order-manager.php:257
 msgid "nextSIM: provisioning eSIM(s)…"
 msgstr ""
 
-#: includes/fulfilment/class-provisioner.php:95
+#: includes/fulfilment/class-order-manager.php:288
+msgid "nextSIM: pending eSIM provisioning jobs cancelled with the order. If an upstream order was already created, check the reseller account."
+msgstr ""
+
+#: includes/fulfilment/class-provisioner.php:69
+msgid "nextSIM: activation skipped — the order is cancelled or refunded."
+msgstr ""
+
+#: includes/fulfilment/class-provisioner.php:113
 msgid "the eSIM has expired and can no longer be topped up"
 msgstr ""
 
 #. translators: %s: reason.
-#: includes/fulfilment/class-provisioner.php:99
+#: includes/fulfilment/class-provisioner.php:117
 #, php-format
 msgid "Top-up not possible: %s."
 msgstr ""
 
 #. translators: %d: package id.
-#: includes/fulfilment/class-provisioner.php:126
+#: includes/fulfilment/class-provisioner.php:144
 #, php-format
 msgid "The eSIM has expired; no charge was made. Sell package #%d as a replacement."
 msgstr ""
 
-#: includes/fulfilment/class-provisioner.php:129
+#: includes/fulfilment/class-provisioner.php:147
 msgid "The eSIM has expired; no charge was made."
 msgstr ""
 
 #. translators: %d: package id.
-#: includes/fulfilment/class-provisioner.php:142
+#: includes/fulfilment/class-provisioner.php:160
 #, php-format
-msgid "This plan was retired by the provider; no charge was made. It is replaced by package #%d."
+msgid "This plan has been withdrawn from the catalog; no charge was made. It is replaced by package #%d."
 msgstr ""
 
-#: includes/fulfilment/class-provisioner.php:145
-msgid "This plan was retired by the provider; no charge was made."
+#: includes/fulfilment/class-provisioner.php:163
+msgid "This plan has been withdrawn from the catalog; no charge was made."
 msgstr ""
 
 #. translators: %s: error message.
-#: includes/fulfilment/class-provisioner.php:163
+#: includes/fulfilment/class-provisioner.php:181
 #, php-format
 msgid "Activation failed: %s"
 msgstr ""
 
-#: includes/fulfilment/class-provisioner.php:168
-msgid "The request may have reached the provider — check the reseller account before retrying (credit may have been charged)."
+#: includes/fulfilment/class-provisioner.php:186
+msgid "The request may have reached the API — check the reseller account before retrying (credit may have been charged)."
 msgstr ""
 
-#: includes/fulfilment/class-provisioner.php:179
+#: includes/fulfilment/class-provisioner.php:197
 msgid "Activation was accepted but no order token was returned — check the reseller account manually before retrying (credit may have been charged)."
 msgstr ""
 
 #. translators: 1: ordered count, 2: allocated count, 3: upstream order token.
-#: includes/fulfilment/class-provisioner.php:193
+#: includes/fulfilment/class-provisioner.php:213
 #, php-format
-msgid "Ordered %1$d eSIMs but the provider allocated %2$d (upstream order %3$s). Order held for review."
+msgid "Ordered %1$d eSIMs but only %2$d were allocated (upstream order %3$s). Order held for review."
 msgstr ""
 
-#: includes/fulfilment/class-provisioner.php:235
+#: includes/fulfilment/class-provisioner.php:256
+msgid "nextSIM: polling stopped — the order is cancelled or refunded. Check the reseller account for the upstream order."
+msgstr ""
+
+#: includes/fulfilment/class-provisioner.php:264
 msgid "Missing order token while polling."
 msgstr ""
 
 #. translators: %s: error message.
-#: includes/fulfilment/class-provisioner.php:251
+#: includes/fulfilment/class-provisioner.php:280
 #, php-format
 msgid "Could not fetch eSIM details: %s"
 msgstr ""
 
 #. translators: %s: upstream order status.
-#: includes/fulfilment/class-provisioner.php:266
+#: includes/fulfilment/class-provisioner.php:295
 #, php-format
 msgid "The eSIM order was %s upstream — no eSIM will be delivered. Check the reseller account."
 msgstr ""
 
-#: includes/fulfilment/class-provisioner.php:301
+#: includes/fulfilment/class-provisioner.php:330
 msgid "Timed out waiting for the eSIM to be provisioned."
 msgstr ""
 
-#: includes/fulfilment/class-provisioner.php:314
+#: includes/fulfilment/class-provisioner.php:343
 msgid "nextSIM: eSIM provisioned and ready."
 msgstr ""
 
-#: includes/fulfilment/class-provisioner.php:383
+#: includes/fulfilment/class-provisioner.php:416
 msgid "nextSIM: all eSIMs delivered. Order left open for the remaining (non-eSIM) items."
 msgstr ""
 
-#: includes/fulfilment/class-provisioner.php:386
+#: includes/fulfilment/class-provisioner.php:419
 msgid "All eSIMs delivered."
 msgstr ""
 
 #. translators: %s: failure message.
-#: includes/fulfilment/class-provisioner.php:397
+#: includes/fulfilment/class-provisioner.php:430
 #, php-format
 msgid "nextSIM error: %s"
 msgstr ""
@@ -698,59 +732,59 @@ msgid_plural "%d days"
 msgstr[0] ""
 msgstr[1] ""
 
-#: includes/import/class-importer.php:801
+#: includes/import/class-importer.php:806
 msgid "The last sync imported zero plans — check the API connection and the import filters."
 msgstr ""
 
-#: includes/import/class-importer.php:853
+#: includes/import/class-importer.php:858
 msgid "Cancelled by an administrator."
 msgstr ""
 
-#: includes/import/class-importer.php:904
+#: includes/import/class-importer.php:909
 msgid "No sync has run yet."
 msgstr ""
 
-#: includes/import/class-importer.php:941
+#: includes/import/class-importer.php:946
 msgid "Finishing: checking for plans that disappeared from the API…"
 msgstr ""
 
 #. translators: 1: current segment number, 2: number of segments.
-#: includes/import/class-importer.php:947
+#: includes/import/class-importer.php:952
 #, php-format
 msgid "Segment %1$d/%2$d"
 msgstr ""
 
 #. translators: 1: current page, 2: number of pages.
-#: includes/import/class-importer.php:952
+#: includes/import/class-importer.php:957
 #, php-format
 msgid "Page %1$d/%2$d"
 msgstr ""
 
 #. translators: 1: plans processed, 2: total plans.
-#: includes/import/class-importer.php:957
+#: includes/import/class-importer.php:962
 #, php-format
 msgid "%1$s / %2$s plans"
 msgstr ""
 
 #. translators: %s: plans processed.
-#: includes/import/class-importer.php:960
+#: includes/import/class-importer.php:965
 #, php-format
 msgid "%s plans"
 msgstr ""
 
 #. translators: 1: plans processed, 2: created, 3: updated, 4: unchanged.
-#: includes/import/class-importer.php:1006
+#: includes/import/class-importer.php:1011
 #, php-format
 msgid "Last sync completed: %1$s plans (%2$s new, %3$s updated, %4$s unchanged)."
 msgstr ""
 
 #. translators: %s: plans processed before the cancel.
-#: includes/import/class-importer.php:1010
+#: includes/import/class-importer.php:1015
 #, php-format
 msgid "Last sync was cancelled after %s plans."
 msgstr ""
 
-#: includes/import/class-importer.php:1013
+#: includes/import/class-importer.php:1018
 msgid "Last sync did not complete successfully."
 msgstr ""
 
@@ -758,31 +792,31 @@ msgstr ""
 msgid "nextSIM for WooCommerce requires WooCommerce to be installed and active."
 msgstr ""
 
-#: templates/email/esim-delivery-plain.php:16
+#: templates/email/esim-delivery-plain.php:20
 msgid "Your eSIM is ready. Use the activation code or install link on your device."
 msgstr ""
 
-#: templates/email/esim-delivery-plain.php:32
-#: templates/email/esim-delivery.php:58
+#: templates/email/esim-delivery-plain.php:36
+#: templates/email/esim-delivery.php:62
 msgid "Activation code:"
 msgstr ""
 
-#: templates/email/esim-delivery-plain.php:38
+#: templates/email/esim-delivery-plain.php:42
 msgid "iPhone:"
 msgstr ""
 
-#: templates/email/esim-delivery-plain.php:41
+#: templates/email/esim-delivery-plain.php:45
 msgid "Android:"
 msgstr ""
 
-#: templates/email/esim-delivery.php:19
+#: templates/email/esim-delivery.php:23
 msgid "Thank you! Your eSIM is ready. Installation details are below."
 msgstr ""
 
-#: templates/email/esim-delivery.php:26
+#: templates/email/esim-delivery.php:30
 msgid "View your eSIM & QR code online"
 msgstr ""
 
-#: templates/email/esim-delivery.php:47
+#: templates/email/esim-delivery.php:51
 msgid "eSIM"
 msgstr ""
