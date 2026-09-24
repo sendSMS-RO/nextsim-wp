@@ -86,3 +86,53 @@ table.nextsim-usage td {
 	font-size: 0.92em;
 	color: #50575e;
 }
+
+/* Single product: top-up code and Multi-eSIM quantity fields. */
+.nextsim-topup-field,
+.nextsim-quantity-field {
+	margin: 0 0 1em;
+}
+
+.nextsim-topup-field label,
+.nextsim-quantity-field label {
+	display: block;
+	margin-bottom: 0.35em;
+}
+
+.nextsim-topup-field input,
+.nextsim-quantity-field select {
+	display: block;
+	width: 100%;
+	max-width: 420px;
+	padding: 0.5em 0.75em;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	font-size: 1em;
+	line-height: 1.4;
+}
+
+.nextsim-topup-field .description {
+	display: block;
+	margin-top: 0.35em;
+	font-size: 0.85em;
+	opacity: 0.8;
+}
+
+/* My eSIMs: usage check button and result table. */
+.nextsim-check-usage {
+	padding: 0.5em 1em;
+	font-size: 0.95em;
+	cursor: pointer;
+}
+
+.nextsim-usage {
+	margin-top: 0.75em;
+	border-collapse: collapse;
+}
+
+.nextsim-usage th,
+.nextsim-usage td {
+	padding: 0.35em 1em 0.35em 0;
+	text-align: left;
+	border: 0;
+}

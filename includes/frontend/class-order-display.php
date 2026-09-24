@@ -29,7 +29,7 @@ class Order_Display {
 			return;
 		}
 
-		if ( is_order_received_page() || is_view_order_page() || is_account_page() ) {
+		if ( is_order_received_page() || is_view_order_page() || is_account_page() || is_product() ) {
 			wp_enqueue_style( 'nextsim-woo-frontend', NEXTSIM_WOO_URL . 'assets/css/frontend.css', array(), NEXTSIM_WOO_VERSION );
 		}
 	}
