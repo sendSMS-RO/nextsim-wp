@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       nextSIM for WooCommerce
- * Plugin URI:        https://nextsim.eu
+ * Plugin URI:        https://github.com/sendSMS-RO/nextsim-wp
  * Description:       Sell nextSIM eSIM plans on your WooCommerce store: import plans, automatic QR delivery, top-up and consumption checks.
  * Version:           0.1.0
  * Requires at least: 6.5
