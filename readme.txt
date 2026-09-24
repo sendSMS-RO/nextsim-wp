@@ -1,5 +1,5 @@
 === nextSIM for WooCommerce ===
-Contributors: nextsim
+Contributors: sendsms
 Tags: esim, woocommerce, travel, sim, mobile-data
 Requires at least: 6.5
 Tested up to: 7.1
