@@ -142,7 +142,7 @@ class Api_Client {
 		}
 
 		// Activation codes and order tokens are path segments; log the route shape only.
-		$log_path = preg_replace( array( '#(/esim/)[^/]+#', '#(/order/)[^/]+#' ), array( '$1{code}', '$1{token}' ), $path );
+		$log_path = preg_replace( array( '#(/esim/)(?!activate|changes|order/)[^/]+#', '#(/order/)[^/]+#' ), array( '$1{code}', '$1{token}' ), $path );
 
 		$args = array(
 			'method'  => $method,

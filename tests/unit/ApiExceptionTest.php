@@ -30,6 +30,14 @@ final class ApiExceptionTest extends TestCase {
 		$this->assertTrue( ( new Api_Exception( 'gateway', 503 ) )->is_retryable() );
 	}
 
+	public function test_rejected_field_matches_422_validation_reasons(): void {
+		$e = new Api_Exception( 'invalid', 422, 'validation_failed', array( 'reasons' => array( 'callbackUrl' => array( 'must be public' ) ) ) );
+
+		$this->assertTrue( $e->rejected_field( 'callbackUrl' ) );
+		$this->assertFalse( $e->rejected_field( 'packageId' ) );
+		$this->assertFalse( ( new Api_Exception( 'nope', 409, 'x', array( 'reasons' => array( 'callbackUrl' => array( 'y' ) ) ) ) )->rejected_field( 'callbackUrl' ) );
+	}
+
 	public function test_client_error_is_not_retryable(): void {
 		$this->assertFalse( ( new Api_Exception( 'bad request', 422 ) )->is_retryable() );
 		$this->assertFalse( ( new Api_Exception( 'not found', 404 ) )->is_retryable() );

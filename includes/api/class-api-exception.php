@@ -49,6 +49,20 @@ class Api_Exception extends \Exception {
 	}
 
 	/**
+	 * A 422 whose validation errors name the given request field. Nothing was
+	 * processed upstream, so the caller may safely adjust that field and retry.
+	 */
+	public function rejected_field( string $field ): bool {
+		if ( 422 !== $this->http_status ) {
+			return false;
+		}
+
+		$reasons = $this->context['reasons'] ?? null;
+
+		return is_array( $reasons ) && isset( $reasons[ $field ] );
+	}
+
+	/**
 	 * A network/timeout error or a 5xx — worth retrying via the job scheduler.
 	 */
 	public function is_retryable(): bool {

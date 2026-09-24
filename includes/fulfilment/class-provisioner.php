@@ -134,7 +134,7 @@ class Provisioner {
 		}
 
 		try {
-			$created = $this->client->activate( $payload );
+			$created = $this->activate_with_callback_fallback( $payload, $order );
 		} catch ( Api_Exception $e ) {
 			if ( $e->is_esim_expired() ) {
 				$new = $e->get_buy_new_package_id();
@@ -224,6 +224,33 @@ class Provisioner {
 		$item->save();
 
 		$this->reenqueue( self::HOOK_POLL, $order_id, $item_id, 0, 10 );
+	}
+
+	/**
+	 * The API only accepts callback URLs that resolve to a public IP. Stores on a
+	 * private or local host (staging, intranet, localhost) would otherwise fail every
+	 * activation, although delivery works fine through polling alone. A 422 means
+	 * nothing was processed upstream, so retrying without the callback is safe.
+	 *
+	 * @param array<string, mixed> $payload
+	 * @return array<string, mixed>
+	 *
+	 * @throws Api_Exception
+	 */
+	private function activate_with_callback_fallback( array $payload, \WC_Order $order ): array {
+		try {
+			return $this->client->activate( $payload );
+		} catch ( Api_Exception $e ) {
+			if ( ! isset( $payload['callbackUrl'] ) || ! $e->rejected_field( 'callbackUrl' ) ) {
+				throw $e;
+			}
+		}
+
+		$this->logger->info( 'Callback URL rejected by the API; activating without it and relying on polling', array( 'order' => $order->get_id() ) );
+		$order->add_order_note( __( 'nextSIM: the API could not reach this site\'s callback URL (the store is not on a public host). Provisioning continues by polling.', 'nextsim-woo' ) );
+		unset( $payload['callbackUrl'] );
+
+		return $this->client->activate( $payload );
 	}
 
 	/**
