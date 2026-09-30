@@ -238,6 +238,18 @@ class Order_Manager {
 			return;
 		}
 
+		// Pay-on-delivery orders reach "processing" with no money collected, and an eSIM
+		// is delivered instantly — so wait until the shop confirms the payment by
+		// completing the order.
+		if ( self::awaits_payment( $order ) ) {
+			if ( self::has_esim_items( $order ) ) {
+				$order->add_order_note( __( 'nextSIM: this order is paid on delivery, so the eSIM is not ordered yet. It is provisioned when you mark the order as Completed (payment received).', 'nextsim-woo' ) );
+				$order->save();
+			}
+
+			return;
+		}
+
 		$esim_items = array();
 		foreach ( $order->get_items() as $item_id => $item ) {
 			if ( $item instanceof \WC_Order_Item_Product && Order_Esim_Store::is_nextsim_item( $item ) ) {
@@ -262,6 +274,36 @@ class Order_Manager {
 		}
 
 		$this->logger->info( 'Order provisioning enqueued', array( 'order' => $order_id, 'items' => count( $esim_items ) ) );
+	}
+
+	/**
+	 * True while an order paid on delivery has not been confirmed as paid: it is still
+	 * "processing", no gateway reported a payment (no transaction id), and provisioning
+	 * has not started. Completing the order ends the wait.
+	 */
+	public static function awaits_payment( \WC_Order $order ): bool {
+		/**
+		 * Payment method ids that put an order in "processing" before any money is collected.
+		 *
+		 * @param array<int, string> $methods Default: WooCommerce cash on delivery.
+		 */
+		$methods = (array) apply_filters( 'nextsim_woo_pay_on_delivery_methods', array( 'cod' ) );
+
+		return in_array( $order->get_payment_method(), $methods, true )
+			&& $order->has_status( 'processing' )
+			&& $order->get_total() > 0
+			&& '' === (string) $order->get_transaction_id()
+			&& '' === (string) $order->get_meta( Order_Esim_Store::ORDER_STATE );
+	}
+
+	private static function has_esim_items( \WC_Order $order ): bool {
+		foreach ( $order->get_items() as $item ) {
+			if ( $item instanceof \WC_Order_Item_Product && Order_Esim_Store::is_nextsim_item( $item ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**

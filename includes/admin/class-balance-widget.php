@@ -84,7 +84,7 @@ class Balance_Widget {
 				'<div class="notice notice-warning is-dismissible"><p><strong>nextSIM:</strong> %s</p></div>',
 				sprintf(
 					/* translators: %s: store currency code. */
-					esc_html__( 'nextSIM reseller prices are in EUR, but this store uses %s and no EUR conversion is active. Pick an exchange rate mode under WooCommerce > Settings > nextSIM > Pricing (or enter a fixed rate), otherwise EUR figures are written as store-currency prices unconverted.', 'nextsim-woo' ),
+					esc_html__( 'nextSIM reseller prices are in EUR, but this store uses %s and no EUR conversion is active. Pick an exchange rate mode under WooCommerce > Settings > nextSIM > Pricing (or enter a fixed rate). With conversion turned off, EUR figures are written as store-currency prices unconverted; without a usable rate, the sync does not run.', 'nextsim-woo' ),
 					esc_html( get_woocommerce_currency() )
 				)
 			);
@@ -93,7 +93,7 @@ class Balance_Widget {
 		if ( ! class_exists( \BaconQrCode\Writer::class ) ) {
 			printf(
 				'<div class="notice notice-info is-dismissible"><p><strong>nextSIM:</strong> %s</p></div>',
-				esc_html__( 'The QR code library is not installed (run "composer install" in the plugin directory). eSIM delivery still works via activation codes and install links, but no QR images will be shown.', 'nextsim-woo' )
+				esc_html__( 'The bundled QR code library could not be loaded — reinstall the plugin. eSIM delivery still works via activation codes and install links, but no QR images will be shown.', 'nextsim-woo' )
 			);
 		}
 	}

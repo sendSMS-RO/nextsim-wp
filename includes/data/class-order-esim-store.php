@@ -50,6 +50,9 @@ final class Order_Esim_Store {
 	public const ITEM_ACTIVATING_AT  = '_nextsim_activating_at';
 	// Number of eSIMs the API actually allocated when it clamped a Multi-eSIM order.
 	public const ITEM_ALLOCATED      = '_nextsim_allocated';
+	// Comma-separated tokens of upstream orders that were canceled/refunded for this
+	// item. Kept for reconciliation once the live token is cleared for a fresh retry.
+	public const ITEM_PREV_TOKENS    = '_nextsim_previous_order_tokens';
 
 	public const ITEM_STATUS_PENDING    = 'pending';
 	public const ITEM_STATUS_ACTIVATING = 'activating';
@@ -111,6 +114,59 @@ final class Order_Esim_Store {
 		$item->save();
 
 		return true;
+	}
+
+	/**
+	 * Every line-item meta key the plugin owns. These hold machine state, so the order
+	 * editor must neither show them as editable rows nor write them back on "Update".
+	 *
+	 * @return array<int, string>
+	 */
+	public static function item_meta_keys(): array {
+		return array(
+			self::ITEM_TOPUP_CODE,
+			self::ITEM_QUANTITY,
+			self::ITEM_PACKAGE_ID,
+			self::ITEM_ORDER_TOKEN,
+			self::ITEM_STATUS,
+			self::ITEM_ACTIVATION,
+			self::ITEM_LPA,
+			self::ITEM_APPLE_URL,
+			self::ITEM_ANDROID_URL,
+			self::ITEM_SMDP,
+			self::ITEM_ICCID,
+			self::ITEM_MSISDN,
+			self::ITEM_MEMBERS,
+			self::ITEM_ACTIVATED_AT,
+			self::ITEM_EXPIRES_AT,
+			self::ITEM_POLL_ATTEMPTS,
+			self::ITEM_LAST_ERROR,
+			self::ITEM_ACTIVATING_AT,
+			self::ITEM_ALLOCATED,
+			self::ITEM_PREV_TOKENS,
+		);
+	}
+
+	/**
+	 * Forget the upstream order of an item after it was canceled or refunded upstream,
+	 * so the next retry places a new order instead of polling the dead one. The token
+	 * is kept in a history field. The caller saves the item.
+	 */
+	public static function release_order_token( \WC_Order_Item_Product $item ): void {
+		$token = (string) $item->get_meta( self::ITEM_ORDER_TOKEN );
+
+		if ( '' === $token ) {
+			return;
+		}
+
+		$previous = array_filter( explode( ',', (string) $item->get_meta( self::ITEM_PREV_TOKENS ) ) );
+		if ( ! in_array( $token, $previous, true ) ) {
+			$previous[] = $token;
+		}
+
+		$item->update_meta_data( self::ITEM_PREV_TOKENS, implode( ',', $previous ) );
+		$item->delete_meta_data( self::ITEM_ORDER_TOKEN );
+		$item->delete_meta_data( self::ITEM_ALLOCATED );
 	}
 
 	/**

@@ -317,9 +317,13 @@ class Provisioner {
 		$status_key = (string) ( $info['status_key'] ?? '' );
 
 		if ( in_array( $status_key, array( 'canceled', 'refunded' ), true ) ) {
+			// That upstream order is dead: drop its token so "retry" buys a new eSIM
+			// instead of polling the same canceled order again.
+			Order_Esim_Store::release_order_token( $item );
+
 			$this->fail_item( $order, $item, sprintf(
 				/* translators: %s: upstream order status. */
-				__( 'The eSIM order was %s upstream — no eSIM will be delivered. Check the reseller account.', 'nextsim-woo' ),
+				__( 'The eSIM order was %s upstream — no eSIM was delivered. Check the reseller account; retrying places a new eSIM order.', 'nextsim-woo' ),
 				$status_key
 			) );
 
@@ -464,9 +468,67 @@ class Provisioner {
 
 		$this->logger->error( 'Provisioning failed', array( 'order' => $order->get_id(), 'item' => $item->get_id(), 'message' => $message ) );
 
+		$this->notify_shop( $order, $item, $message );
+
 		// A failure can be the order's LAST terminal transition — without this, the
 		// delivery email for already-completed sibling items would never be sent.
 		$this->maybe_complete_order( $order );
+	}
+
+	/**
+	 * Email the shop about a failed eSIM: the order is paid and on hold, and nothing
+	 * else in WooCommerce alerts the merchant about a processing → on-hold change.
+	 */
+	private function notify_shop( \WC_Order $order, \WC_Order_Item_Product $item, string $message ): void {
+		$new_order = get_option( 'woocommerce_new_order_settings' );
+		$recipient = is_array( $new_order ) && ! empty( $new_order['recipient'] )
+			? (string) $new_order['recipient']
+			: (string) get_option( 'admin_email' );
+
+		/**
+		 * Recipient(s) of the "eSIM could not be delivered" alert, comma-separated.
+		 * Return an empty string to disable the alert.
+		 *
+		 * @param string    $recipient Default: the WooCommerce "New order" recipient, else the site admin email.
+		 * @param \WC_Order $order
+		 */
+		$recipient = (string) apply_filters( 'nextsim_woo_failure_email_recipient', $recipient, $order );
+
+		if ( '' === trim( $recipient ) ) {
+			return;
+		}
+
+		$subject = sprintf(
+			/* translators: 1: site name, 2: order number. */
+			__( '[%1$s] eSIM could not be delivered for order #%2$s', 'nextsim-woo' ),
+			wp_specialchars_decode( (string) get_option( 'blogname' ), ENT_QUOTES ),
+			$order->get_order_number()
+		);
+
+		if ( ! function_exists( 'WC' ) ) {
+			return;
+		}
+
+		$body = sprintf(
+			'<p>%1$s</p><p>%2$s</p><p>%3$s</p><p><a href="%4$s">%5$s</a></p>',
+			esc_html(
+				sprintf(
+					/* translators: 1: order number, 2: product name. */
+					__( 'The eSIM for order #%1$s (%2$s) could not be delivered automatically. The order is on hold and the customer is waiting.', 'nextsim-woo' ),
+					$order->get_order_number(),
+					$item->get_name()
+				)
+			),
+			/* translators: %s: failure reason. */
+			esc_html( sprintf( __( 'Reason: %s', 'nextsim-woo' ), $message ) ),
+			esc_html__( 'Once the cause is fixed, open the order and run the "nextSIM: retry eSIM provisioning" order action.', 'nextsim-woo' ),
+			esc_url( $order->get_edit_order_url() ),
+			esc_html__( 'Open the order', 'nextsim-woo' )
+		);
+
+		// Sent through WooCommerce so it carries the store's From address and email template.
+		$mailer = WC()->mailer();
+		$mailer->send( $recipient, $subject, $mailer->wrap_message( __( 'eSIM could not be delivered', 'nextsim-woo' ), $body ) );
 	}
 
 	private function order_is_void( \WC_Order $order ): bool {

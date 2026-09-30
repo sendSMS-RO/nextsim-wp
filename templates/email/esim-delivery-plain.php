@@ -13,11 +13,13 @@
 // contract; the rest are locals of this include, not real globals.
 
 use NextSIM\Woo\Data\Order_Esim_Store;
+use NextSIM\Woo\Emails\Email_Esim_Delivery;
 
 defined( 'ABSPATH' ) || exit;
 
 echo "= " . esc_html( wp_strip_all_tags( $email_heading ) ) . " =\n\n";
 echo esc_html__( 'Your eSIM is ready. Use the activation code or install link on your device.', 'nextsim-woo' ) . "\n\n";
+echo esc_html__( 'View your eSIM & QR code online:', 'nextsim-woo' ) . ' ' . esc_url_raw( Email_Esim_Delivery::online_url( $order ) ) . "\n";
 
 foreach ( $order->get_items() as $item ) {
 	if ( ! $item instanceof \WC_Order_Item_Product || ! Order_Esim_Store::is_nextsim_item( $item ) ) {

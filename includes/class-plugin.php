@@ -11,6 +11,8 @@ namespace NextSIM\Woo;
 
 use NextSIM\Woo\Account\My_Account;
 use NextSIM\Woo\Admin\Balance_Widget;
+use NextSIM\Woo\Admin\Order_Item_Meta;
+use NextSIM\Woo\Admin\Product_Price_Mode;
 use NextSIM\Woo\Admin\Settings_Page;
 use NextSIM\Woo\Api\Api_Client;
 use NextSIM\Woo\Checkout\Checkout_Fields;
@@ -63,6 +65,8 @@ final class Plugin {
 		( new Settings_Page( $this->settings, $this->api_client(), $importer ) )->register();
 		( new Balance_Widget( $this->settings, $this->api_client(), $this->logger, $this->exchange_rate(), $importer ) )->register();
 		$importer->register();
+		( new Order_Item_Meta() )->register();
+		( new Product_Price_Mode( $this->settings ) )->register();
 
 		( new Checkout_Fields( $this->pricing_engine(), $this->api_client() ) )->register();
 		( new Order_Manager( $this->logger ) )->register();
@@ -102,7 +106,9 @@ final class Plugin {
 			$this->settings->markup_percent(),
 			$this->settings->category_markup(),
 			$this->price_decimals(),
-			$this->exchange_rate()->rate()
+			// Lazy: the rate (and its possible ECB request) is only resolved when a price
+			// is actually computed, never just because the plugin booted.
+			fn (): float => $this->exchange_rate()->rate()
 		);
 	}
 
@@ -132,7 +138,8 @@ final class Plugin {
 			$this->product_mapper(),
 			new Package_Repository(),
 			$this->settings,
-			$this->logger
+			$this->logger,
+			$this->exchange_rate()
 		);
 	}
 

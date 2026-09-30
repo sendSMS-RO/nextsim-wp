@@ -9,11 +9,21 @@ declare(strict_types=1);
 
 namespace NextSIM\Woo\Emails;
 
+use NextSIM\Woo\Data\Order_Esim_Store;
 use NextSIM\Woo\Fulfilment\Qr_Renderer;
 
 defined( 'ABSPATH' ) || exit;
 
 class Email_Esim_Delivery extends \WC_Email {
+
+	/**
+	 * QR codes embedded in the email being sent, keyed by LPA string. Empty outside
+	 * a send (e.g. the WooCommerce email preview), where the template falls back to
+	 * the inline SVG.
+	 *
+	 * @var array<string, array{cid: string, png: string}>
+	 */
+	private array $qr_images = array();
 
 	public function __construct() {
 		$this->id             = 'nextsim_esim_delivery';
@@ -55,7 +65,18 @@ class Email_Esim_Delivery extends \WC_Email {
 		$sent = false;
 
 		if ( $this->is_enabled() && $this->get_recipient() ) {
-			$sent = (bool) $this->send( $this->get_recipient(), $this->get_subject(), $this->get_content(), $this->get_headers(), $this->get_attachments() );
+			$this->qr_images = $order instanceof \WC_Order && 'plain' !== $this->get_email_type()
+				? $this->build_qr_images( $order )
+				: array();
+
+			add_action( 'phpmailer_init', array( $this, 'embed_qr_images' ) );
+
+			try {
+				$sent = (bool) $this->send( $this->get_recipient(), $this->get_subject(), $this->get_content(), $this->get_headers(), $this->get_attachments() );
+			} finally {
+				remove_action( 'phpmailer_init', array( $this, 'embed_qr_images' ) );
+				$this->qr_images = array();
+			}
 		}
 
 		// Leave a trace either way: the QR is on the order page regardless, but the
@@ -73,6 +94,62 @@ class Email_Esim_Delivery extends \WC_Email {
 		$this->restore_locale();
 	}
 
+	/**
+	 * Mail clients such as Gmail and Outlook block data-URI and SVG images, so each QR
+	 * code travels as a PNG attached to the message and referenced by Content-ID.
+	 *
+	 * @return array<string, array{cid: string, png: string}>
+	 */
+	private function build_qr_images( \WC_Order $order ): array {
+		$qr     = new Qr_Renderer();
+		$images = array();
+
+		foreach ( $order->get_items() as $item ) {
+			if ( ! $item instanceof \WC_Order_Item_Product
+				|| ! Order_Esim_Store::is_nextsim_item( $item )
+				|| Order_Esim_Store::ITEM_STATUS_COMPLETED !== (string) $item->get_meta( Order_Esim_Store::ITEM_STATUS )
+			) {
+				continue;
+			}
+
+			foreach ( Order_Esim_Store::esims_for_item( $item ) as $esim ) {
+				$lpa = $esim['lpa'];
+
+				if ( '' === $lpa || isset( $images[ $lpa ] ) ) {
+					continue;
+				}
+
+				$png = $qr->png( $lpa );
+
+				if ( '' !== $png ) {
+					$images[ $lpa ] = array(
+						'cid' => 'nextsim-esim-qr-' . ( count( $images ) + 1 ),
+						'png' => $png,
+					);
+				}
+			}
+		}
+
+		return $images;
+	}
+
+	/**
+	 * @param \PHPMailer\PHPMailer\PHPMailer $phpmailer
+	 */
+	public function embed_qr_images( $phpmailer ): void {
+		foreach ( $this->qr_images as $image ) {
+			$phpmailer->addStringEmbeddedImage( $image['png'], $image['cid'], $image['cid'] . '.png', 'base64', 'image/png' );
+		}
+	}
+
+	/**
+	 * Where the customer can see the eSIM online. A guest has no account to log in to,
+	 * so they get the order-received page, which opens with the order key in the link.
+	 */
+	public static function online_url( \WC_Order $order ): string {
+		return $order->get_customer_id() > 0 ? $order->get_view_order_url() : $order->get_checkout_order_received_url();
+	}
+
 	public function get_content_html(): string {
 		return wc_get_template_html(
 			$this->template_html,
@@ -80,6 +157,7 @@ class Email_Esim_Delivery extends \WC_Email {
 				'order'         => $this->object,
 				'email_heading' => $this->get_heading(),
 				'qr'            => new Qr_Renderer(),
+				'qr_cids'       => array_map( static fn ( array $image ): string => $image['cid'], $this->qr_images ),
 				'sent_to_admin' => false,
 				'plain_text'    => false,
 				'email'         => $this,

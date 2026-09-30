@@ -11,6 +11,7 @@ namespace NextSIM\Woo\Frontend;
 
 use NextSIM\Woo\Data\Order_Esim_Store;
 use NextSIM\Woo\Frontend\Install_Guide;
+use NextSIM\Woo\Fulfilment\Order_Manager;
 use NextSIM\Woo\Fulfilment\Qr_Renderer;
 
 defined( 'ABSPATH' ) || exit;
@@ -35,7 +36,8 @@ class Order_Display {
 	}
 
 	public function render( \WC_Order $order ): void {
-		$blocks = '';
+		$blocks         = '';
+		$awaits_payment = Order_Manager::awaits_payment( $order );
 
 		foreach ( $order->get_items() as $item ) {
 			if ( ! $item instanceof \WC_Order_Item_Product || ! Order_Esim_Store::is_nextsim_item( $item ) ) {
@@ -52,6 +54,8 @@ class Order_Display {
 				$blocks .= '<p class="nextsim-esim-error">' . esc_html__( 'We could not deliver this eSIM automatically. The shop has been notified and will contact you shortly.', 'nextsim-woo' ) . '</p>';
 			} elseif ( '' !== $status ) {
 				$blocks .= '<p class="nextsim-esim-pending">' . esc_html__( 'Your eSIM is being provisioned. This page will show the QR code shortly.', 'nextsim-woo' ) . '</p>';
+			} elseif ( $awaits_payment ) {
+				$blocks .= '<p class="nextsim-esim-pending">' . esc_html__( 'Your eSIM will be delivered as soon as your payment is confirmed.', 'nextsim-woo' ) . '</p>';
 			}
 		}
 
