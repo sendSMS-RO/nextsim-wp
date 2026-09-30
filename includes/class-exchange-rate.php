@@ -24,6 +24,9 @@ class Exchange_Rate {
 	private const TRANSIENT = 'nextsim_woo_eur_rate';
 	private const TTL       = 12 * HOUR_IN_SECONDS;
 
+	private const FAIL_TRANSIENT = 'nextsim_woo_eur_rate_fail';
+	private const FAIL_TTL       = 15 * MINUTE_IN_SECONDS;
+
 	public function __construct(
 		private Settings $settings,
 		private Logger $logger
@@ -33,9 +36,24 @@ class Exchange_Rate {
 	 * The multiplier applied to EUR reseller costs before markup.
 	 *
 	 * Returns 1.0 whenever no conversion applies: EUR store, mode "off", or no
-	 * usable rate could be resolved (which the admin is warned about separately).
+	 * usable rate could be resolved. Callers that write prices must check
+	 * is_resolved() first, so an unresolved rate never prices the catalogue at the
+	 * raw EUR figures.
 	 */
 	public function rate(): float {
+		return $this->resolve() ?? 1.0;
+	}
+
+	/**
+	 * False when the store needs a conversion (non-EUR currency, mode auto or fixed)
+	 * but no rate is available: the ECB fetch failed with no earlier rate to fall
+	 * back on, the currency is not in the ECB feed, or the fixed rate is empty.
+	 */
+	public function is_resolved(): bool {
+		return null !== $this->resolve();
+	}
+
+	private function resolve(): ?float {
 		$currency = $this->store_currency();
 
 		if ( 'EUR' === $currency ) {
@@ -48,10 +66,10 @@ class Exchange_Rate {
 			return 1.0;
 		}
 
-		if ( Settings::EXCHANGE_FIXED === $mode ) {
-			$fixed = $this->settings->exchange_fixed_rate();
+		$fixed = $this->settings->exchange_fixed_rate();
 
-			return $fixed > 0 ? $fixed : 1.0;
+		if ( Settings::EXCHANGE_FIXED === $mode ) {
+			return $fixed > 0 ? $fixed : null;
 		}
 
 		$cached = get_transient( self::TRANSIENT );
@@ -59,23 +77,28 @@ class Exchange_Rate {
 			return (float) $cached['rate'];
 		}
 
-		$fetched = $this->fetch_ecb_rate( $currency );
-		if ( null !== $fetched ) {
-			set_transient( self::TRANSIENT, array( 'currency' => $currency, 'rate' => $fetched ), self::TTL );
-			update_option( self::OPT_LAST_KNOWN, array( 'currency' => $currency, 'rate' => $fetched ), false );
+		// Negative cache: after a failed fetch, do not repeat the 10s-timeout HTTP call
+		// on every request that needs a rate.
+		if ( false === get_transient( self::FAIL_TRANSIENT ) ) {
+			$fetched = $this->fetch_ecb_rate( $currency );
 
-			return $fetched;
+			if ( null !== $fetched ) {
+				set_transient( self::TRANSIENT, array( 'currency' => $currency, 'rate' => $fetched ), self::TTL );
+				update_option( self::OPT_LAST_KNOWN, array( 'currency' => $currency, 'rate' => $fetched ), false );
+
+				return $fetched;
+			}
+
+			set_transient( self::FAIL_TRANSIENT, 1, self::FAIL_TTL );
 		}
 
-		// Fetch failed: last good rate, then the fixed-rate field, then no conversion.
+		// Fetch failed: last good rate, then the fixed-rate field, then no rate at all.
 		$last = get_option( self::OPT_LAST_KNOWN );
 		if ( is_array( $last ) && $currency === ( $last['currency'] ?? '' ) && (float) ( $last['rate'] ?? 0 ) > 0 ) {
 			return (float) $last['rate'];
 		}
 
-		$fixed = $this->settings->exchange_fixed_rate();
-
-		return $fixed > 0 ? $fixed : 1.0;
+		return $fixed > 0 ? $fixed : null;
 	}
 
 	/**

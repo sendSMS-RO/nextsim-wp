@@ -39,13 +39,22 @@ class Package_Iterator {
 	 *  - Raw paginator nested under data: `{ data: { data: [plans], current_page, last_page, total } }`
 	 *
 	 * @return array{items: array<int, array<string, mixed>>, current_page: int, last_page: int, total: int}
+	 *
+	 * @throws Api_Exception When the request fails or the response is not a catalogue page.
 	 */
 	public function fetch_page( int $page ): array {
 		$query         = $this->base_query;
 		$query['page'] = $page;
 
 		$payload = $this->client->get_packages_page( $query );
-		$data    = isset( $payload['data'] ) && is_array( $payload['data'] ) ? $payload['data'] : array();
+
+		// A 2xx without a `data` list is not a catalogue page (maintenance or CDN page,
+		// truncated body). Reading it as "empty last page" would end the walk early.
+		if ( ! isset( $payload['data'] ) || ! is_array( $payload['data'] ) ) {
+			throw new Api_Exception( 'Unexpected packages response: no data list.', 0 );
+		}
+
+		$data = $payload['data'];
 
 		if ( isset( $payload['meta'] ) && is_array( $payload['meta'] ) ) {
 			$meta = $payload['meta'];

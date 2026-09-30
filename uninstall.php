@@ -41,6 +41,7 @@ foreach ( $nextsim_woo_options as $nextsim_woo_option ) {
 delete_transient( 'nextsim_woo_balance' );
 delete_transient( 'nextsim_woo_balance_fail' );
 delete_transient( 'nextsim_woo_eur_rate' );
+delete_transient( 'nextsim_woo_eur_rate_fail' );
 
 if ( function_exists( 'as_unschedule_all_actions' ) ) {
 	as_unschedule_all_actions( '', array(), 'nextsim-woo' );

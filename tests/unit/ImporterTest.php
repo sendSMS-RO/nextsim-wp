@@ -14,6 +14,7 @@ use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 use NextSIM\Woo\Data\Package_Repository;
+use NextSIM\Woo\Exchange_Rate;
 use NextSIM\Woo\Import\Importer;
 use NextSIM\Woo\Import\Plan_Data;
 use NextSIM\Woo\Import\Product_Mapper;
@@ -298,6 +299,73 @@ final class ImporterTest extends TestCase {
 		$this->assertArrayNotHasKey( 'nextsim_woo_last_full_sync', $this->options );
 		$this->assertStringContainsString( '1 plan(s) failed', $this->options[ Importer::OPT_LAST_ERROR ] );
 		$this->assertSame( 'error', $importer->progress()['status'] );
+	}
+
+	public function test_start_run_refuses_without_an_exchange_rate(): void {
+		$exchange = new class() extends Exchange_Rate {
+			// phpcs:ignore Generic.CodeAnalysis.UselessOverridingMethod.Found
+			public function __construct() {}
+
+			public function is_resolved(): bool {
+				return false;
+			}
+		};
+
+		$importer = new Importer(
+			new Fake_Api_Client( array() ),
+			new Stub_Mapper(),
+			new Stub_Repository(),
+			new Settings(),
+			new Logger(),
+			$exchange
+		);
+
+		$this->assertFalse( $importer->trigger_now() );
+		$this->assertSame( array(), $this->state() );
+		$this->assertSame( array(), $this->scheduled );
+		$this->assertStringContainsString( 'exchange rate', $this->options[ Importer::OPT_LAST_ERROR ] );
+	}
+
+	public function test_page_without_a_data_list_is_retried_not_treated_as_the_end(): void {
+		$mapper   = new Stub_Mapper();
+		$importer = $this->importer( array( 1 => array( 1 ), 2 => array( 2 ), 3 => array( 3 ) ), $mapper );
+		$importer->start_run();
+		$run = $this->state()['run'];
+
+		// Page 7 is not served by the fake client: it answers with an empty body.
+		$importer->run_page( array( 'seg' => 0, 'page' => 7, 'run' => $run, 'try' => 0, 'offset' => 0 ) );
+
+		$this->assertSame( array(), $mapper->calls );
+		$this->assertSame( array( 'seg' => 0, 'page' => 7, 'run' => $run, 'try' => 1, 'offset' => 0 ), $this->last_scheduled()['args'] );
+		$this->assertArrayNotHasKey( Importer::OPT_LAST_RESULT, $this->options, 'the run is not finished' );
+	}
+
+	public function test_empty_page_before_the_last_page_fails_the_run_without_a_sweep(): void {
+		$importer = new Importer(
+			new Fake_Api_Client(
+				array(
+					1 => array(
+						'data' => array( $this->plan( 1 ) ),
+						'meta' => array( 'current_page' => 1, 'last_page' => 3, 'total' => 3 ),
+					),
+					// A well-formed but empty page in the middle of the walk.
+					2 => array( 'data' => array() ),
+				)
+			),
+			new Stub_Mapper(),
+			new Stub_Repository(),
+			new Settings(),
+			new Logger()
+		);
+		$importer->start_run();
+		$run = $this->state()['run'];
+
+		$importer->run_page( array( 'seg' => 0, 'page' => 1, 'run' => $run, 'try' => 0, 'offset' => 0 ) );
+		$importer->run_page( array( 'seg' => 0, 'page' => 2, 'run' => $run, 'try' => 0, 'offset' => 0 ) );
+
+		$this->assertSame( 'error', $this->options[ Importer::OPT_LAST_RESULT ]['status'] );
+		$this->assertArrayHasKey( Importer::OPT_LAST_ERROR, $this->options );
+		$this->assertArrayNotHasKey( 'nextsim_woo_last_full_sync', $this->options, 'no orphan sweep ran' );
 	}
 
 	public function test_superseded_job_does_nothing(): void {

@@ -19,6 +19,7 @@ use NextSIM\Woo\Api\Api_Client;
 use NextSIM\Woo\Api\Api_Exception;
 use NextSIM\Woo\Api\Package_Iterator;
 use NextSIM\Woo\Data\Package_Repository;
+use NextSIM\Woo\Exchange_Rate;
 use NextSIM\Woo\Logger;
 use NextSIM\Woo\Settings;
 
@@ -93,7 +94,8 @@ class Importer {
 		private Product_Mapper $mapper,
 		private Package_Repository $repository,
 		private Settings $settings,
-		private Logger $logger
+		private Logger $logger,
+		private ?Exchange_Rate $exchange = null
 	) {}
 
 	public function register(): void {
@@ -162,6 +164,10 @@ class Importer {
 		if ( '' === $since ) {
 			$this->start_run();
 
+			return;
+		}
+
+		if ( ! $this->exchange_rate_ready() ) {
 			return;
 		}
 
@@ -335,6 +341,10 @@ class Importer {
 			return false;
 		}
 
+		if ( ! $this->exchange_rate_ready() ) {
+			return false;
+		}
+
 		$run      = time();
 		$segments = $this->segments();
 
@@ -374,6 +384,24 @@ class Importer {
 		$this->enqueue_page( 0, 1, $run, 0, 0 );
 
 		return true;
+	}
+
+	/**
+	 * Reseller prices are in EUR. Without a usable exchange rate a non-EUR store would
+	 * get the raw EUR figures written as store-currency prices (far below cost), so no
+	 * sync runs until a rate is available. The reason is surfaced as the last sync error.
+	 */
+	private function exchange_rate_ready(): bool {
+		if ( null === $this->exchange || $this->exchange->is_resolved() ) {
+			return true;
+		}
+
+		$message = __( 'Sync not started: reseller prices are in EUR and no exchange rate is available for the store currency (the ECB rate could not be fetched, or it does not list this currency). Enter a fixed rate under WooCommerce > Settings > nextSIM > Pricing.', 'nextsim-woo' );
+
+		update_option( self::OPT_LAST_ERROR, $message, false );
+		$this->logger->error( 'Import skipped: no exchange rate available for the store currency.' );
+
+		return false;
 	}
 
 	/**
@@ -430,6 +458,18 @@ class Importer {
 			$this->logger->error( 'Import segment failed permanently', array( 'seg' => $seg, 'page' => $page, 'error' => $e->getMessage() ) );
 
 			$state['failed'][] = sprintf( 'segment %d (page %d): %s', $seg + 1, $page, $e->getMessage() );
+			$this->schedule_next( $state, $seg, $page, $run, count( $segments ), true, 0, 0 );
+
+			return;
+		}
+
+		// An empty page before the segment's known last page is a truncated walk, not the
+		// end of the catalogue. Ending the segment here would let the orphan sweep take
+		// every plan on the unseen pages out of stock, so record it as a failed segment.
+		if ( array() === $result['items'] && $page < (int) ( $state['last_page'] ?? 0 ) ) {
+			$this->logger->error( 'Import segment truncated: empty page before the last page', array( 'seg' => $seg, 'page' => $page, 'last_page' => (int) $state['last_page'] ) );
+
+			$state['failed'][] = sprintf( 'segment %d (page %d): empty page before the last page (%d)', $seg + 1, $page, (int) $state['last_page'] );
 			$this->schedule_next( $state, $seg, $page, $run, count( $segments ), true, 0, 0 );
 
 			return;

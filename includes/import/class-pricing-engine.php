@@ -22,13 +22,15 @@ final class Pricing_Engine {
 	 * @param float             $global_markup_percent Markup applied over the base cost, e.g. 25 => x1.25.
 	 * @param array<int, float> $category_markup       Per product_cat term id markup overrides.
 	 * @param int               $decimals              Price decimal places (default WooCommerce is 2).
-	 * @param float             $exchange_rate         EUR → store-currency multiplier applied before markup.
+	 * @param float|\Closure    $exchange_rate         EUR → store-currency multiplier applied before markup. A
+	 *                                                 closure is resolved on first use, so building the engine
+	 *                                                 never triggers the rate lookup by itself.
 	 */
 	public function __construct(
 		private float $global_markup_percent = 0.0,
 		private array $category_markup = array(),
 		private int $decimals = 2,
-		private float $exchange_rate = 1.0
+		private float|\Closure $exchange_rate = 1.0
 	) {}
 
 	/**
@@ -37,7 +39,7 @@ final class Pricing_Engine {
 	 */
 	public function compute( float $base_cost, array|int|null $category_term_ids = null ): float {
 		$markup = $this->resolve_markup( $category_term_ids );
-		$raw    = $base_cost * $this->exchange_rate * ( 1 + ( $markup / 100 ) );
+		$raw    = $base_cost * $this->exchange_rate() * ( 1 + ( $markup / 100 ) );
 
 		return round( $raw, $this->decimals );
 	}
@@ -49,7 +51,15 @@ final class Pricing_Engine {
 	 * number as if it were store currency.
 	 */
 	public function convert( float $eur ): float {
-		return round( $eur * $this->exchange_rate, $this->decimals );
+		return round( $eur * $this->exchange_rate(), $this->decimals );
+	}
+
+	private function exchange_rate(): float {
+		if ( $this->exchange_rate instanceof \Closure ) {
+			$this->exchange_rate = (float) ( $this->exchange_rate )();
+		}
+
+		return $this->exchange_rate;
 	}
 
 	public function global_markup_percent(): float {

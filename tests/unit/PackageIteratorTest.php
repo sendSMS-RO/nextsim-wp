@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace NextSIM\Woo\Tests\Unit;
 
+use NextSIM\Woo\Api\Api_Exception;
 use NextSIM\Woo\Api\Package_Iterator;
 use PHPUnit\Framework\TestCase;
 
@@ -74,12 +75,35 @@ final class PackageIteratorTest extends TestCase {
 		$this->assertSame( array( 1, 2 ), $ids );
 	}
 
-	public function test_empty_response_yields_no_items(): void {
-		$client = new Fake_Api_Client( array( 1 => array() ) );
+	public function test_empty_catalogue_yields_no_items(): void {
+		$client = new Fake_Api_Client(
+			array(
+				1 => array(
+					'data' => array(),
+					'meta' => array( 'current_page' => 1, 'last_page' => 1, 'total' => 0 ),
+				),
+			)
+		);
 
 		$page = ( new Package_Iterator( $client ) )->fetch_page( 1 );
 
 		$this->assertSame( array(), $page['items'] );
 		$this->assertSame( 1, $page['last_page'] );
+	}
+
+	/**
+	 * A 2xx whose body is not a catalogue page (maintenance HTML decodes to an empty
+	 * array) must fail, not read as "empty last page" — that would end the walk early
+	 * and let the orphan sweep take the unseen plans out of stock.
+	 */
+	public function test_response_without_data_list_is_a_retryable_error(): void {
+		$client = new Fake_Api_Client( array( 1 => array() ) );
+
+		try {
+			( new Package_Iterator( $client ) )->fetch_page( 1 );
+			$this->fail( 'Expected an Api_Exception.' );
+		} catch ( Api_Exception $e ) {
+			$this->assertTrue( $e->is_retryable() );
+		}
 	}
 }
