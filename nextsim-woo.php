@@ -67,6 +67,12 @@ add_action(
 			add_action(
 				'admin_notices',
 				static function (): void {
+					// Only where it is actionable: the Plugins screen, for users who can fix it.
+					$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+					if ( ! current_user_can( 'activate_plugins' ) || ! $screen || 'plugins' !== $screen->id ) {
+						return;
+					}
+
 					echo '<div class="notice notice-error"><p>';
 					esc_html_e( 'nextSIM for WooCommerce requires WooCommerce to be installed and active.', 'nextsim-woo' );
 					echo '</p></div>';

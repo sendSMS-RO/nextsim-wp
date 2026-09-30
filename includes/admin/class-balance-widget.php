@@ -44,19 +44,14 @@ class Balance_Widget {
 	 * screens only (to avoid nagging on every admin page).
 	 */
 	public function maybe_health_notices(): void {
-		if ( ! current_user_can( 'manage_woocommerce' ) || ! function_exists( 'get_current_screen' ) ) {
-			return;
-		}
-
-		$screen = get_current_screen();
-		if ( ! $screen || ! in_array( $screen->id, array( 'dashboard', 'woocommerce_page_wc-settings' ), true ) ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) || ! $this->is_notice_screen() ) {
 			return;
 		}
 
 		$last_error = (string) get_option( Importer::OPT_LAST_ERROR, '' );
 		if ( '' !== $last_error ) {
 			printf(
-				'<div class="notice notice-warning"><p><strong>nextSIM:</strong> %s %s</p></div>',
+				'<div class="notice notice-warning is-dismissible"><p><strong>nextSIM:</strong> %s %s</p></div>',
 				esc_html__( 'The last plan sync did not complete successfully:', 'nextsim-woo' ),
 				esc_html( $last_error )
 			);
@@ -71,7 +66,7 @@ class Balance_Widget {
 
 			if ( 'running' === $progress['status'] ) {
 				printf(
-					'<div class="notice notice-info"><p><strong>nextSIM:</strong> %s %s <a href="%s">%s</a></p></div>',
+					'<div class="notice notice-info is-dismissible"><p><strong>nextSIM:</strong> %s %s <a href="%s">%s</a></p></div>',
 					esc_html__( 'Plan sync in progress:', 'nextsim-woo' ),
 					esc_html( (string) $progress['summary'] ),
 					esc_url( admin_url( 'admin.php?page=wc-settings&tab=nextsim&section=sync' ) ),
@@ -86,7 +81,7 @@ class Balance_Widget {
 			&& ( null === $this->exchange || ! $this->exchange->is_converting() )
 		) {
 			printf(
-				'<div class="notice notice-warning"><p><strong>nextSIM:</strong> %s</p></div>',
+				'<div class="notice notice-warning is-dismissible"><p><strong>nextSIM:</strong> %s</p></div>',
 				sprintf(
 					/* translators: %s: store currency code. */
 					esc_html__( 'nextSIM reseller prices are in EUR, but this store uses %s and no EUR conversion is active. Pick an exchange rate mode under WooCommerce > Settings > nextSIM > Pricing (or enter a fixed rate), otherwise EUR figures are written as store-currency prices unconverted.', 'nextsim-woo' ),
@@ -97,7 +92,7 @@ class Balance_Widget {
 
 		if ( ! class_exists( \BaconQrCode\Writer::class ) ) {
 			printf(
-				'<div class="notice notice-info"><p><strong>nextSIM:</strong> %s</p></div>',
+				'<div class="notice notice-info is-dismissible"><p><strong>nextSIM:</strong> %s</p></div>',
 				esc_html__( 'The QR code library is not installed (run "composer install" in the plugin directory). eSIM delivery still works via activation codes and install links, but no QR images will be shown.', 'nextsim-woo' )
 			);
 		}
@@ -129,7 +124,7 @@ class Balance_Widget {
 	public function maybe_low_balance_notice(): void {
 		$threshold = $this->settings->low_balance_alert();
 
-		if ( $threshold <= 0 || ! current_user_can( 'manage_woocommerce' ) ) {
+		if ( $threshold <= 0 || ! current_user_can( 'manage_woocommerce' ) || ! $this->is_notice_screen() ) {
 			return;
 		}
 
@@ -140,13 +135,26 @@ class Balance_Widget {
 		}
 
 		printf(
-			'<div class="notice notice-warning"><p>%s</p></div>',
+			'<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
 			sprintf(
 				/* translators: %s: current balance. */
 				esc_html__( 'nextSIM reseller balance is low (%s EUR). Top up your reseller account to keep fulfilling orders.', 'nextsim-woo' ),
 				esc_html( $balance )
 			)
 		);
+	}
+
+	/**
+	 * Notices are limited to the dashboard and the WooCommerce settings screens.
+	 */
+	private function is_notice_screen(): bool {
+		if ( ! function_exists( 'get_current_screen' ) ) {
+			return false;
+		}
+
+		$screen = get_current_screen();
+
+		return null !== $screen && in_array( $screen->id, array( 'dashboard', 'woocommerce_page_wc-settings' ), true );
 	}
 
 	private function get_balance(): ?string {
