@@ -178,7 +178,12 @@ class Settings_Page {
 			array(
 				'title' => __( 'Connection', 'nextsim-woo' ),
 				'type'  => 'title',
-				'desc'  => __( 'Enter the nextSIM reseller API host and your API token. A reseller account is required.', 'nextsim-woo' ),
+				'desc'  => sprintf(
+					/* translators: 1: reseller registration link, 2: reseller account login link. */
+					__( 'Enter the nextSIM reseller API host and your API token. A reseller account is required: register at %1$s, then log in at %2$s and create a token on the API tokens page.', 'nextsim-woo' ),
+					'<a href="https://legal.sendsms.ro/register" target="_blank" rel="noopener noreferrer">legal.sendsms.ro/register</a>',
+					'<a href="https://resim.sendsms.ro/app/login" target="_blank" rel="noopener noreferrer">resim.sendsms.ro/app/login</a>'
+				),
 				'id'    => 'nextsim_woo_connection',
 			),
 			array(
@@ -590,8 +595,12 @@ class Settings_Page {
 			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'nextsim-woo' ) ), 403 );
 		}
 
-		if ( ! $this->importer->trigger_now() ) {
+		if ( ! $this->settings->is_configured() ) {
 			wp_send_json_error( array( 'message' => __( 'Enter and save the API host and token first.', 'nextsim-woo' ) ) );
+		}
+
+		if ( ! $this->importer->trigger_now() ) {
+			wp_send_json_error( array( 'message' => (string) get_option( Importer::OPT_LAST_ERROR, '' ) ) );
 		}
 
 		wp_send_json_success(
