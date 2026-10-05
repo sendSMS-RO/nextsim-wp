@@ -47,7 +47,7 @@ final class Pricing_Engine {
 	/**
 	 * Convert an EUR figure to the store currency using only the exchange rate
 	 * (no markup), rounded to `decimals`. Used to seed a manual-mode price from the
-	 * provider's RRP so a non-EUR store does not launch products at the raw EUR
+	 * plan's RRP so a non-EUR store does not launch products at the raw EUR
 	 * number as if it were store currency.
 	 */
 	public function convert( float $eur ): float {

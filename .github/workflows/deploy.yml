@@ -56,6 +56,23 @@ jobs:
           COMPOSER=composer.release.json composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
           rm -f composer.release.json composer.release.lock
 
+      # The deploy action refuses to touch a version that already exists in SVN. A tag only
+      # reaches this job a second time when it was deliberately force-moved to republish the
+      # same version, so drop the old SVN tag and let the action recreate it from trunk.
+      - name: Remove the already published SVN tag (republish of the same version)
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+        run: |
+          command -v svn > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq subversion; }
+          TAG_URL="https://plugins.svn.wordpress.org/${SLUG}/tags/${GITHUB_REF_NAME}"
+          if svn info "$TAG_URL" > /dev/null 2>&1; then
+            svn rm "$TAG_URL" -m "Remove tag ${GITHUB_REF_NAME} to republish it from GitHub" \
+              --no-auth-cache --non-interactive --username "$SVN_USERNAME" --password "$SVN_PASSWORD"
+          else
+            echo "Tag ${GITHUB_REF_NAME} is not in SVN yet; nothing to remove."
+          fi
+
       - name: Deploy to WordPress.org
         id: deploy
         uses: 10up/action-wordpress-plugin-deploy@stable

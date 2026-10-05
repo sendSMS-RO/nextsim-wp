@@ -299,7 +299,7 @@ msgid "Routes filter"
 msgstr ""
 
 #: includes/admin/class-settings-page.php:294
-msgid "Comma-separated route codes (e.g. VDF001). Leave empty to import all."
+msgid "Comma-separated route codes (e.g. ROM001). Leave empty to import all."
 msgstr ""
 
 #: includes/admin/class-settings-page.php:297

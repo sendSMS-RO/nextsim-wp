@@ -291,7 +291,7 @@ class Settings_Page {
 				'title'    => __( 'Routes filter', 'nextsim-woo' ),
 				'id'       => Settings::OPT_IMPORT_ROUTES,
 				'type'     => 'text',
-				'desc_tip' => __( 'Comma-separated route codes (e.g. VDF001). Leave empty to import all.', 'nextsim-woo' ),
+				'desc_tip' => __( 'Comma-separated route codes (e.g. ROM001). Leave empty to import all.', 'nextsim-woo' ),
 			),
 			array(
 				'title'    => __( 'Countries filter', 'nextsim-woo' ),

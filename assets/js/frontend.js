@@ -3,7 +3,7 @@
 	'use strict';
 
 	// Render a value as text, keeping a legitimate numeric 0 (which `|| ''` would hide).
-	// Providers send either numbers (e.g. 0) or unit strings (e.g. "5 GB"); both pass through.
+	// The API sends either numbers (e.g. 0) or unit strings (e.g. "5 GB"); both pass through.
 	function cell( value ) {
 		return ( value === 0 || value ) ? String( value ) : '';
 	}

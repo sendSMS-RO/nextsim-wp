@@ -67,7 +67,7 @@ class Product_Mapper {
 		$product = new \WC_Product_Simple();
 		$mode    = $this->settings->default_price_mode();
 
-		// Manual mode seeds from the provider RRP, which is in EUR — convert it to the
+		// Manual mode seeds from the plan RRP, which is in EUR — convert it to the
 		// store currency (no markup) so a non-EUR store does not launch at the raw EUR
 		// figure. The admin can then adjust; the importer never overwrites it again.
 		$price = Settings::PRICE_MODE_AUTO === $mode
