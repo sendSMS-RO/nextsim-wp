@@ -1,0 +1,34 @@
+# Update the WordPress.org listing (banner, icon, screenshots, readme) without a new release.
+#
+# Runs when the listing assets or readme.txt change on main. Only /assets and the readme of the
+# current stable tag are committed to SVN; plugin code is never touched here (IGNORE_OTHER_FILES),
+# so the published version stays the same. Code changes still need a version tag (deploy.yml).
+#
+# Uses the same repository secrets as deploy.yml: SVN_USERNAME, SVN_PASSWORD.
+
+name: Update WordPress.org assets and readme
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.wordpress-org/**'
+      - 'readme.txt'
+
+jobs:
+  assets:
+    name: Listing assets + readme → SVN
+    runs-on: ubuntu-latest
+    env:
+      SLUG: nextsim-woo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update assets and readme on WordPress.org
+        uses: 10up/action-wordpress-plugin-asset-update@stable
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SLUG: ${{ env.SLUG }}
+          IGNORE_OTHER_FILES: true
