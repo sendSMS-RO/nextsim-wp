@@ -47,8 +47,14 @@ jobs:
           tools: composer
           coverage: none
 
+      # composer.lock is not committed, so Composer resolves require-dev even with --no-dev and
+      # PHPUnit 11 (PHP 8.2+) cannot be resolved on 8.1. Install from a copy without require-dev;
+      # the shipped composer.json stays untouched.
       - name: Install runtime dependencies (QR library)
-        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+        run: |
+          jq 'del(."require-dev")' composer.json > composer.release.json
+          COMPOSER=composer.release.json composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+          rm -f composer.release.json composer.release.lock
 
       - name: Deploy to WordPress.org
         id: deploy
